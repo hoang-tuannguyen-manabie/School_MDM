@@ -111,6 +111,22 @@ export class DevicesService {
     return { success: true };
   }
 
+  batchAssignClass(deviceIds: string[], classCode: string) {
+    if (!classCode) {
+      throw new BadRequestException('Mã lớp học không được để trống');
+    }
+    const updated: string[] = [];
+    for (const id of deviceIds) {
+      const dev = this.preRegisteredDevices.get(id);
+      if (dev) {
+        dev.classCode = classCode;
+        this.preRegisteredDevices.set(id, dev);
+        updated.push(id);
+      }
+    }
+    return { success: true, count: updated.length, deviceIds: updated };
+  }
+
   getClassroomDevices(classCode?: string) {
     const now = new Date();
     let list = Array.from(this.preRegisteredDevices.values());

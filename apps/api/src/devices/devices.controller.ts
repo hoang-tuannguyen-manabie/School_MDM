@@ -103,6 +103,25 @@ export class DevicesController {
     };
   }
 
+  @Post('devices/batch-assign')
+  @HttpCode(HttpStatus.OK)
+  async batchAssignDevices(
+    @Body()
+    body: {
+      deviceIds: string[];
+      classCode: string;
+    },
+  ) {
+    const result = this.devicesService.batchAssignClass(body.deviceIds || [], body.classCode);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('mdm/agent/commands/:externalCommandId/ack')
   @HttpCode(HttpStatus.OK)
   async receiveAgentCommandAck(

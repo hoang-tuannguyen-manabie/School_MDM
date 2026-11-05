@@ -345,11 +345,11 @@ function DevicesAndSessionControlView({
     detail: string;
   } | null>(null);
 
-  // Real device pre-registration modal
+  // Real device pre-registration modal (Admin only)
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [enrollImei, setEnrollImei] = useState('');
   const [enrollName, setEnrollName] = useState('');
-  const [enrollClassCode, setEnrollClassCode] = useState('6A1');
+  const [enrollClassCode, setEnrollClassCode] = useState('KHO');
   const [isSubmittingEnroll, setIsSubmittingEnroll] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
 
@@ -449,7 +449,7 @@ function DevicesAndSessionControlView({
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">
-            Quản lý máy tính bảng thật qua mã IMEI và điều khiển lớp học tập trung.
+            Dành cho Quản trị viên: Đăng ký thiết bị thật qua mã IMEI, phân phối vào kho hoặc các lớp học.
           </p>
         </div>
 
@@ -461,18 +461,20 @@ function DevicesAndSessionControlView({
             aria-label="Lọc theo lớp học"
             className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 transition"
           >
-            <option value="ALL">Tất cả lớp học</option>
+            <option value="ALL">Tất cả (Lớp & Kho máy)</option>
+            <option value="KHO">Kho thiết bị dùng chung</option>
             <option value="6A1">Lớp 6A1</option>
             <option value="6A2">Lớp 6A2</option>
             <option value="7A1">Lớp 7A1</option>
             <option value="8A1">Lớp 8A1</option>
           </select>
 
-          {/* Enroll Real Device button */}
+          {/* Enroll Real Device button (Admin only) */}
           <button
             type="button"
             onClick={() => {
               setEnrollError(null);
+              setEnrollClassCode('KHO');
               setShowEnrollModal(true);
             }}
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
@@ -630,7 +632,15 @@ function DevicesAndSessionControlView({
                     <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">
                       {d.imei}
                     </td>
-                    <td className="py-3 px-4 font-medium text-xs text-slate-700">{d.classCode}</td>
+                    <td className="py-3 px-4 font-medium text-xs text-slate-700">
+                      {d.classCode === 'KHO' ? (
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px]">
+                          Kho dùng chung
+                        </span>
+                      ) : (
+                        `Lớp ${d.classCode}`
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       {isOnline ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -689,7 +699,7 @@ function DevicesAndSessionControlView({
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật
+                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật (Quản trị viên)
               </h3>
               <button
                 onClick={() => setShowEnrollModal(false)}
@@ -700,7 +710,7 @@ function DevicesAndSessionControlView({
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Nhập mã IMEI của máy tính bảng vật lý. Khi thiết bị được mở nguồn, ứng dụng Classroom DPC sẽ gửi tín hiệu và hệ thống tự động kết nối vào lớp học.
+              Dành riêng cho Quản trị viên: Nhập mã IMEI vật lý để thêm thiết bị vào hệ thống trường học. Sau khi đăng ký, máy tính bảng sẽ sẵn sàng để Giáo viên chọn vào tiết học tại lớp.
             </p>
 
             {enrollError && (
@@ -742,13 +752,14 @@ function DevicesAndSessionControlView({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Phân công Lớp học
+                  Phân công Lớp học / Kho máy
                 </label>
                 <select
                   value={enrollClassCode}
                   onChange={(e) => setEnrollClassCode(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                 >
+                  <option value="KHO">Kho thiết bị dùng chung (Chưa phân lớp)</option>
                   <option value="6A1">Lớp 6A1</option>
                   <option value="6A2">Lớp 6A2</option>
                   <option value="7A1">Lớp 7A1</option>
