@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, AlertCircle, Sparkles } from 'lucide-react';
+import { Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, AlertCircle } from 'lucide-react';
 
 interface AdminLoginProps {
   onSuccess: () => void;
@@ -92,11 +92,6 @@ export function AdminLogin({
             <span>{error}</span>
           </div>
         )}
-
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 flex items-start gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-          <span>Mật khẩu mặc định hệ thống: <strong className="font-mono text-slate-800">Manabie@2026</strong></span>
-        </div>
 
         <button
           type="submit"
