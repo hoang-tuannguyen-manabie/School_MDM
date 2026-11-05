@@ -37,7 +37,10 @@ import {
   School,
   BookOpen,
   Pin,
+  LogOut,
 } from 'lucide-react';
+import { AdminLogin } from './components/AdminLogin';
+import { TeacherClassroomView } from './views/TeacherClassroomView';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -602,12 +605,102 @@ function PortalLayout(): React.ReactElement {
   const location = useLocation();
   const navigate = useNavigate();
   const [provider, setProvider] = useState<MdmProviderType>(MDM_PROVIDER_TYPES.CLASSROOM_DPC);
-  const [activeRole, setActiveRole] = useState<RoleName>(ROLES.ADMIN);
+  const [portalMode, setPortalMode] = useState<'TEACHER' | 'ADMIN'>(() => {
+    if (location.pathname.startsWith('/admin')) {
+      return 'ADMIN';
+    }
+    return (localStorage.getItem('school_mdm_active_portal') as 'TEACHER' | 'ADMIN') || 'TEACHER';
+  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('school_mdm_admin_auth') === 'true';
+  });
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(false);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
+  const handleSwitchToAdmin = () => {
+    if (isAdminAuthenticated) {
+      setPortalMode('ADMIN');
+      localStorage.setItem('school_mdm_active_portal', 'ADMIN');
+    } else {
+      setShowAdminLoginModal(true);
+    }
+  };
+
+  const handleAdminLoginSuccess = () => {
+    setIsAdminAuthenticated(true);
+    setShowAdminLoginModal(false);
+    setPortalMode('ADMIN');
+    localStorage.setItem('school_mdm_active_portal', 'ADMIN');
+  };
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem('school_mdm_admin_auth');
+    setIsAdminAuthenticated(false);
+    setPortalMode('TEACHER');
+    localStorage.setItem('school_mdm_active_portal', 'TEACHER');
+    navigate('/');
+  };
+
+  const handleSwitchToTeacher = () => {
+    setPortalMode('TEACHER');
+    localStorage.setItem('school_mdm_active_portal', 'TEACHER');
+    setShowAdminLoginModal(false);
+    navigate('/');
+  };
+
+  // TEACHER PORTAL MODE
+  if (portalMode === 'TEACHER') {
+    return (
+      <>
+        <OnboardingGuide
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          currentRole={ROLES.TEACHER}
+          currentProvider={provider}
+          onSelectRole={() => {}}
+          onSelectProvider={setProvider}
+          onNavigate={(path) => navigate(path)}
+        />
+        {showAdminLoginModal && (
+          <AdminLogin
+            isModal
+            onSuccess={handleAdminLoginSuccess}
+            onCancel={() => setShowAdminLoginModal(false)}
+          />
+        )}
+        <TeacherClassroomView
+          onOpenAdminLogin={handleSwitchToAdmin}
+          onOpenOnboarding={() => setShowOnboarding(true)}
+        />
+      </>
+    );
+  }
+
+  // ADMIN PORTAL MODE - Prompt login if not authenticated
+  if (!isAdminAuthenticated) {
+    return (
+      <>
+        <OnboardingGuide
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          currentRole={ROLES.ADMIN}
+          currentProvider={provider}
+          onSelectRole={() => {}}
+          onSelectProvider={setProvider}
+          onNavigate={(path) => navigate(path)}
+        />
+        <AdminLogin
+          onSuccess={handleAdminLoginSuccess}
+          onCancel={handleSwitchToTeacher}
+        />
+      </>
+    );
+  }
+
+  // ADMIN PORTAL MODE - Authenticated layout
   const visibleMenuItems = SIDEBAR_MENU_ITEMS.filter((item) =>
-    item.allowedRoles.includes(activeRole),
+    item.allowedRoles.includes(ROLES.ADMIN),
   );
 
   return (
@@ -615,9 +708,9 @@ function PortalLayout(): React.ReactElement {
       <OnboardingGuide
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
-        currentRole={activeRole}
+        currentRole={ROLES.ADMIN}
         currentProvider={provider}
-        onSelectRole={setActiveRole}
+        onSelectRole={() => {}}
         onSelectProvider={setProvider}
         onNavigate={(path) => navigate(path)}
       />
@@ -644,7 +737,7 @@ function PortalLayout(): React.ReactElement {
                 <h1 className="text-sm font-bold tracking-tight text-white truncate">
                   School MDM
                 </h1>
-                <p className="text-[11px] text-slate-400 truncate">Quản lý Tablet Học tập</p>
+                <p className="text-[11px] text-slate-400 truncate">Cổng Quản Trị Hệ Thống</p>
               </div>
             </div>
           ) : null}
@@ -727,11 +820,16 @@ function PortalLayout(): React.ReactElement {
       <main className="flex-1 p-8 overflow-y-auto">
         <header className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">
-              Hệ thống Quản trị Thiết bị Trường học
-            </h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                Hệ Thống Quản Trị Trường Học
+              </h2>
+              <span className="px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold flex items-center gap-1.5 shadow-xs">
+                <ShieldCheck className="w-3.5 h-3.5" /> Quản trị viên
+              </span>
+            </div>
             <p className="text-sm text-slate-600 mt-1">
-              Cổng Quản lý Thiết bị & Lớp học Thông minh
+              Trung tâm điều phối thiết bị, chính sách và tài khoản toàn trường
             </p>
           </div>
 
@@ -743,16 +841,6 @@ function PortalLayout(): React.ReactElement {
               <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
               <span>Hướng dẫn (5 Bước)</span>
             </button>
-
-            <select
-              aria-label="Chọn vai trò"
-              value={activeRole}
-              onChange={(e) => setActiveRole(e.target.value as RoleName)}
-              className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition shadow-sm"
-            >
-              <option value={ROLES.ADMIN}>Vai trò: Quản trị viên</option>
-              <option value={ROLES.TEACHER}>Vai trò: Giáo viên bộ môn</option>
-            </select>
 
             <select
               aria-label="Chọn chế độ quản lý"
@@ -767,6 +855,24 @@ function PortalLayout(): React.ReactElement {
                 Chế độ: Headwind MDM
               </option>
             </select>
+
+            <button
+              onClick={handleSwitchToTeacher}
+              className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+              title="Chuyển sang giao diện giảng dạy của giáo viên"
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Cổng Giáo viên</span>
+            </button>
+
+            <button
+              onClick={handleAdminLogout}
+              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+              title="Đăng xuất khỏi phiên quản trị viên"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Đăng xuất</span>
+            </button>
           </div>
         </header>
 
@@ -777,7 +883,7 @@ function PortalLayout(): React.ReactElement {
               element={
                 <OverviewView
                   provider={provider}
-                  role={activeRole}
+                  role={ROLES.ADMIN}
                   onOpenOnboarding={() => setShowOnboarding(true)}
                 />
               }
@@ -787,7 +893,7 @@ function PortalLayout(): React.ReactElement {
               element={
                 <DevicesAndSessionControlView
                   provider={provider}
-                  title="Quản lý Thiết bị Phòng học"
+                  title="Quản lý Thiết bị Toàn trường"
                 />
               }
             />
