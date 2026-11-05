@@ -73,22 +73,22 @@ export function OnboardingGuide({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 text-white flex items-center justify-between border-b border-indigo-800">
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-700/60 rounded-xl border border-indigo-600/40">
-              <Sparkles className="w-5 h-5 text-amber-300" />
+            <div className="w-9 h-9 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-indigo-300" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">Hướng Dẫn Khởi Động Nhanh (Onboarding)</h3>
-              <p className="text-xs text-indigo-200 mt-0.5">
-                Vận hành Quản lý Tablet Giảng dạy Tại Lớp trong 5 bước đơn giản
+              <h3 className="text-base font-bold text-white tracking-tight">Hướng Dẫn Vận Hành Hệ Thống</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                5 bước kết nối và quản lý thiết bị học tập trong lớp
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Đóng"
-            className="p-2 text-indigo-200 hover:text-white rounded-xl hover:bg-white/10 transition"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>

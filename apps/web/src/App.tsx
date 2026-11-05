@@ -36,6 +36,7 @@ import {
   Lock,
   School,
   BookOpen,
+  Pin,
 } from 'lucide-react';
 
 const queryClient = new QueryClient({
@@ -157,28 +158,25 @@ function OverviewView({
   return (
     <div className="space-y-6">
       {/* Onboarding Quickstart Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="p-6 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-700/60 border border-indigo-500/40 text-amber-300 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5" /> Hướng Dẫn Vận Hành Nhanh
-          </div>
-          <h3 className="text-xl font-bold">5 bước đưa máy tính bảng vào giảng dạy</h3>
-          <p className="text-xs text-indigo-200 max-w-xl">
+          <h3 className="text-xl font-bold tracking-tight text-white">5 bước đưa máy tính bảng vào giảng dạy</h3>
+          <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
             Bắt đầu kết nối máy tính bảng của học sinh và quản lý toàn bộ thiết bị trong giờ dạy học một cách dễ dàng và an toàn.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
             onClick={onOpenOnboarding}
-            className="px-4 py-2.5 rounded-xl bg-white text-indigo-950 text-xs font-bold hover:bg-indigo-50 transition shadow flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-2"
           >
-            <PlayCircle className="w-4 h-4 text-indigo-600" /> Xem Hướng dẫn 5 bước
+            <PlayCircle className="w-4 h-4" /> Xem Hướng dẫn 5 bước
           </button>
           <button
             onClick={handleSimulateHeartbeat}
             disabled={isSimulatingHeartbeat}
-            className="px-4 py-2.5 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-semibold border border-indigo-500/50 transition flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSimulatingHeartbeat ? 'animate-spin' : ''}`} />
             {isSimulatingHeartbeat ? 'Đang gửi...' : 'Thử nghiệm kết nối máy tính bảng'}
@@ -207,37 +205,46 @@ function OverviewView({
         </div>
       )}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
-          <p className="text-xs font-medium text-slate-500 uppercase">Lớp học phụ trách</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-4 rounded-xl border border-slate-200 bg-white">
+          <p className="text-xs font-medium text-slate-500">Lớp học phụ trách</p>
+          <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
             {role === ROLES.ADMIN ? '12 Lớp học' : '2 Lớp học (6A1, 6A2)'}
           </p>
           <p className="text-xs text-slate-500 mt-1">Năm học 2026-2027</p>
         </div>
-        <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
-          <p className="text-xs font-medium text-emerald-700 uppercase">Thiết bị đang hoạt động</p>
-          <p className="text-2xl font-bold text-emerald-800 mt-1">
+
+        <div className="p-4 rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-500">Thiết bị đang hoạt động</p>
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
             {simulationStatus && simulationStatus.includes('trực tuyến')
               ? '1 Thiết bị trực tuyến'
               : '0 Thiết bị'}
           </p>
-          <p className="text-xs text-emerald-700 mt-1">Cập nhật tự động theo thời gian thực</p>
+          <p className="text-xs text-slate-500 mt-1">Cập nhật tự động theo thời gian thực</p>
         </div>
-        <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/50">
-          <p className="text-xs font-medium text-indigo-700 uppercase">Phiên học đang diễn ra</p>
-          <p className="text-2xl font-bold text-indigo-900 mt-1">0 Tiết học</p>
-          <p className="text-xs text-indigo-700 mt-1">Sẵn sàng khởi tạo tiết học mới</p>
+
+        <div className="p-4 rounded-xl border border-slate-200 bg-white">
+          <p className="text-xs font-medium text-slate-500">Phiên học đang diễn ra</p>
+          <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">0 Tiết học</p>
+          <p className="text-xs text-slate-500 mt-1">Sẵn sàng khởi tạo tiết học mới</p>
         </div>
-        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50">
-          <p className="text-xs font-medium text-amber-700 uppercase">Chế độ quản lý</p>
-          <p className="text-lg font-bold text-amber-900 mt-1">
+
+        <div className="p-4 rounded-xl border border-slate-200 bg-white">
+          <p className="text-xs font-medium text-slate-500">Chế độ quản lý</p>
+          <p className="text-lg font-bold text-slate-900 mt-1">
             {provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC ? 'Lớp học Tiêu chuẩn' : 'Headwind MDM'}
           </p>
-          <p className="text-xs text-amber-700 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             {provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC
-              ? 'Đầy đủ chức năng Kiosk và Khóa tức thời'
+              ? 'Đầy đủ Kiosk và Khóa tức thời'
               : 'Chế độ quản lý mở rộng'}
           </p>
         </div>
@@ -245,45 +252,45 @@ function OverviewView({
 
       {/* Step by Step Interactive Checklist */}
       <div className="p-5 rounded-xl border border-slate-200 bg-white space-y-4">
-        <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
-          <CheckCircle2 className="w-5 h-5 text-indigo-600" /> Các bước nhanh để bắt đầu sử dụng ngay:
+        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-indigo-600" /> Các bước nhanh để bắt đầu sử dụng ngay:
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <div
             onClick={() => navigate('/classes')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition cursor-pointer space-y-1.5"
+            className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-indigo-900">1. Tạo Lớp & Phân công</span>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">1. Tạo Lớp & Phân công</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-500 leading-relaxed">
               Thiết lập danh sách lớp học và giáo viên phụ trách bộ môn.
             </p>
           </div>
 
           <div
             onClick={() => navigate('/devices')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition cursor-pointer space-y-1.5"
+            className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-indigo-900">2. Kết nối Máy tính bảng</span>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Kết nối Máy tính bảng</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-500 leading-relaxed">
               Kết nối máy tính bảng của học sinh vào hệ thống quản lý phòng học.
             </p>
           </div>
 
           <div
             onClick={() => navigate('/sessions')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition cursor-pointer space-y-1.5"
+            className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-indigo-900">3. Bắt đầu Tiết học</span>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">3. Bắt đầu Tiết học</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-500 leading-relaxed">
               Ghim ứng dụng học tập hoặc khóa màn hình cả lớp trong giờ giảng.
             </p>
           </div>
@@ -399,7 +406,7 @@ function DevicesAndSessionControlView({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           <button
             type="button"
             disabled={!caps.remoteLock.supported}
@@ -411,13 +418,14 @@ function DevicesAndSessionControlView({
               })
             }
             className={cn(
-              'px-3.5 py-2 rounded-lg text-xs font-semibold border transition',
+              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
               caps.remoteLock.supported
-                ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700 shadow-sm'
-                : 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed',
+                ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
             )}
           >
-            🔒 Khóa màn hình lớp học
+            <Lock className="w-3.5 h-3.5 shrink-0" />
+            <span>Khóa màn hình lớp học</span>
           </button>
 
           <button
@@ -431,13 +439,14 @@ function DevicesAndSessionControlView({
               })
             }
             className={cn(
-              'px-3.5 py-2 rounded-lg text-xs font-semibold border transition',
+              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
               caps.kioskMode.supported
-                ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700 shadow-sm'
-                : 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed',
+                ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
             )}
           >
-            📌 Bật Kiosk Tiết Học
+            <Pin className="w-3.5 h-3.5 shrink-0" />
+            <span>Bật Kiosk Tiết Học</span>
           </button>
 
           <button
@@ -451,13 +460,14 @@ function DevicesAndSessionControlView({
               })
             }
             className={cn(
-              'px-3.5 py-2 rounded-lg text-xs font-semibold border transition',
+              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
               caps.appAllowlist.supported
-                ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-sm'
-                : 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed',
+                ? 'bg-slate-800 text-white border-slate-900 hover:bg-slate-900'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
             )}
           >
-            ✅ Áp dụng Danh sách Cho phép
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Áp dụng Danh sách Cho phép</span>
           </button>
         </div>
       </div>
@@ -489,10 +499,10 @@ function DevicesAndSessionControlView({
       )}
 
       {confirmModal && (
-        <div className="p-5 rounded-xl border border-indigo-200 bg-indigo-50/80 shadow-md space-y-3 relative">
+        <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/90 shadow-sm space-y-3 relative">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-indigo-950">
-              Xác nhận: {confirmModal.actionName}
+            <h4 className="text-sm font-bold text-slate-900">
+              Xác nhận lệnh: {confirmModal.actionName}
             </h4>
             <button
               onClick={() => setConfirmModal(null)}
@@ -502,21 +512,21 @@ function DevicesAndSessionControlView({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-indigo-900 leading-relaxed">
+          <p className="text-xs text-slate-600 leading-relaxed">
             Thao tác này sẽ áp dụng ngay lập tức lên tất cả máy tính bảng trong lớp học.
           </p>
           <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={handleConfirmDispatch}
-              className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition"
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
             >
               Xác nhận thực hiện
             </button>
             <button
               type="button"
               onClick={() => setConfirmModal(null)}
-              className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition"
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition shadow-sm"
             >
               Hủy
             </button>
@@ -527,7 +537,7 @@ function DevicesAndSessionControlView({
       <div className="overflow-x-auto border border-slate-200 rounded-xl">
         <table className="w-full text-left border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+            <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
               <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
               <th className="py-3 px-4 font-semibold">Mã thiết bị / Serial</th>
               <th className="py-3 px-4 font-semibold">Lớp học</th>
@@ -539,10 +549,10 @@ function DevicesAndSessionControlView({
             {sampleDevices.map((d) => {
               const badge = getDeviceStatusBadgeTone(d.status);
               return (
-                <tr key={d.id} className="hover:bg-slate-50">
+                <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                  <td className="py-3 px-4 font-mono text-xs text-slate-600">{d.serial}</td>
-                  <td className="py-3 px-4">{d.classCode}</td>
+                  <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">{d.serial}</td>
+                  <td className="py-3 px-4 font-medium">{d.classCode}</td>
                   <td className="py-3 px-4">
                     <span
                       className={cn(
@@ -553,7 +563,7 @@ function DevicesAndSessionControlView({
                       {badge.label}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-xs text-slate-500">{d.lastSeen}</td>
+                  <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
                 </tr>
               );
             })}
@@ -725,12 +735,12 @@ function PortalLayout(): React.ReactElement {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setShowOnboarding(true)}
-              className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 text-white text-xs font-bold hover:from-indigo-700 hover:to-indigo-800 shadow-sm flex items-center gap-1.5 transition"
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
               <span>Hướng dẫn (5 Bước)</span>
             </button>
 
@@ -738,7 +748,7 @@ function PortalLayout(): React.ReactElement {
               aria-label="Chọn vai trò"
               value={activeRole}
               onChange={(e) => setActiveRole(e.target.value as RoleName)}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800"
+              className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition shadow-sm"
             >
               <option value={ROLES.ADMIN}>Vai trò: Quản trị viên</option>
               <option value={ROLES.TEACHER}>Vai trò: Giáo viên bộ môn</option>
@@ -748,7 +758,7 @@ function PortalLayout(): React.ReactElement {
               aria-label="Chọn chế độ quản lý"
               value={provider}
               onChange={(e) => setProvider(e.target.value as MdmProviderType)}
-              className="px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 text-xs font-semibold text-indigo-900"
+              className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition shadow-sm"
             >
               <option value={MDM_PROVIDER_TYPES.CLASSROOM_DPC}>
                 Chế độ: Lớp học ($0)
