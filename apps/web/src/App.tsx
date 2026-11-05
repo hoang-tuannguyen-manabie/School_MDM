@@ -4,13 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cn, getCommandStatusBadgeTone, getDeviceStatusBadgeTone } from '@school-mdm/ui';
 import {
   COMMAND_STATUSES,
-  DEVICE_STATUSES,
   MDM_PROVIDER_TYPES,
   ROLES,
   type CommandStatus,
   type DeviceStatus,
   type MdmProviderType,
-  type RoleName,
 } from '@school-mdm/contracts';
 import { SIDEBAR_MENU_ITEMS } from './navigation/menu';
 import { OnboardingGuide } from './components/OnboardingGuide';
@@ -99,11 +97,9 @@ function getProviderCapabilities(provider: MdmProviderType): CapabilityInfo {
 
 function OverviewView({
   provider,
-  role,
   onOpenOnboarding,
 }: {
   provider: MdmProviderType;
-  role: RoleName;
   onOpenOnboarding: () => void;
 }): React.ReactElement {
   const navigate = useNavigate();
@@ -213,9 +209,9 @@ function OverviewView({
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
           <p className="text-xs font-medium text-slate-500">Lớp học phụ trách</p>
           <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
-            {role === ROLES.ADMIN ? '12 Lớp học' : '2 Lớp học (6A1, 6A2)'}
+            0 Lớp học
           </p>
-          <p className="text-xs text-slate-500 mt-1">Năm học 2026-2027</p>
+          <p className="text-xs text-slate-500 mt-1">Chưa có phân công lớp học</p>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
@@ -363,31 +359,16 @@ function DevicesAndSessionControlView({
     detail: string;
   } | null>(null);
 
-  const sampleDevices: Array<{
-    id: string;
-    name: string;
-    serial: string;
-    classCode: string;
-    status: DeviceStatus;
-    lastSeen: string;
-  }> = [
-    {
-      id: 'dev-01',
-      name: 'Máy tính bảng Bàn 1',
-      serial: 'R58T30ABC01',
-      classCode: '6A1',
-      status: DEVICE_STATUSES.UNKNOWN,
-      lastSeen: 'Chưa có kết nối',
-    },
-    {
-      id: 'dev-02',
-      name: 'Máy tính bảng Bàn 2',
-      serial: 'R58T30ABC02',
-      classCode: '6A1',
-      status: DEVICE_STATUSES.UNKNOWN,
-      lastSeen: 'Chưa có kết nối',
-    },
-  ];
+  const [devices] = useState<
+    Array<{
+      id: string;
+      name: string;
+      serial: string;
+      classCode: string;
+      status: DeviceStatus;
+      lastSeen: string;
+    }>
+  >([]);
 
   const handleConfirmDispatch = () => {
     if (!confirmModal) return;
@@ -549,27 +530,41 @@ function DevicesAndSessionControlView({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {sampleDevices.map((d) => {
-              const badge = getDeviceStatusBadgeTone(d.status);
-              return (
-                <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                  <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">{d.serial}</td>
-                  <td className="py-3 px-4 font-medium">{d.classCode}</td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={cn(
-                        'px-2.5 py-1 rounded-full text-xs font-medium border',
-                        badge.className,
-                      )}
-                    >
-                      {badge.label}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
-                </tr>
-              );
-            })}
+            {devices.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-slate-500">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <Tablet className="w-8 h-8 text-slate-300" />
+                    <p className="text-sm font-semibold text-slate-700">Chưa có thiết bị nào trong hệ thống</p>
+                    <p className="text-xs text-slate-400 max-w-sm">
+                      Thiết bị sẽ tự động xuất hiện tại đây khi học sinh mở ứng dụng Classroom DPC hoặc hoàn tất đăng ký MDM.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              devices.map((d) => {
+                const badge = getDeviceStatusBadgeTone(d.status);
+                return (
+                  <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">{d.serial}</td>
+                    <td className="py-3 px-4 font-medium">{d.classCode}</td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={cn(
+                          'px-2.5 py-1 rounded-full text-xs font-medium border',
+                          badge.className,
+                        )}
+                      >
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -883,7 +878,6 @@ function PortalLayout(): React.ReactElement {
               element={
                 <OverviewView
                   provider={provider}
-                  role={ROLES.ADMIN}
                   onOpenOnboarding={() => setShowOnboarding(true)}
                 />
               }

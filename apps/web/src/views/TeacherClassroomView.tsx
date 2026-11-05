@@ -15,6 +15,7 @@ import {
   X,
   Play,
   Square,
+  Tablet,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 
@@ -29,89 +30,6 @@ interface StudentTablet {
   activeApp: string;
 }
 
-const INITIAL_TABLETS: StudentTablet[] = [
-  {
-    id: 'tab-01',
-    tableNumber: 'Bàn 01',
-    studentName: 'Nguyễn Văn An',
-    serial: 'SM-X210-01',
-    battery: 94,
-    isCharging: true,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-  {
-    id: 'tab-02',
-    tableNumber: 'Bàn 02',
-    studentName: 'Trần Thị Bình',
-    serial: 'SM-X210-02',
-    battery: 88,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-  {
-    id: 'tab-03',
-    tableNumber: 'Bàn 03',
-    studentName: 'Lê Hoàng Cường',
-    serial: 'SM-X210-03',
-    battery: 91,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'GeoGebra Math',
-  },
-  {
-    id: 'tab-04',
-    tableNumber: 'Bàn 04',
-    studentName: 'Phạm Minh Dũng',
-    serial: 'SM-X210-04',
-    battery: 38,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-  {
-    id: 'tab-05',
-    tableNumber: 'Bàn 05',
-    studentName: 'Vũ Thảo Em',
-    serial: 'SM-X210-05',
-    battery: 82,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-  {
-    id: 'tab-06',
-    tableNumber: 'Bàn 06',
-    studentName: 'Hoàng Quốc Phong',
-    serial: 'SM-X210-06',
-    battery: 79,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'GeoGebra Math',
-  },
-  {
-    id: 'tab-07',
-    tableNumber: 'Bàn 07',
-    studentName: 'Đặng Ngọc Hương',
-    serial: 'SM-X210-07',
-    battery: 96,
-    isCharging: true,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-  {
-    id: 'tab-08',
-    tableNumber: 'Bàn 08',
-    studentName: 'Bùi Đức Trọng',
-    serial: 'SM-X210-08',
-    battery: 85,
-    isCharging: false,
-    status: 'ONLINE',
-    activeApp: 'Manabie Learner',
-  },
-];
-
 interface TeacherClassroomViewProps {
   onOpenAdminLogin: () => void;
   onOpenOnboarding: () => void;
@@ -122,9 +40,9 @@ export function TeacherClassroomView({
   onOpenOnboarding,
 }: TeacherClassroomViewProps): React.ReactElement {
   const [selectedClass, setSelectedClass] = useState('6A1');
-  const [isSessionActive, setIsSessionActive] = useState(true);
-  const [tablets, setTablets] = useState<StudentTablet[]>(INITIAL_TABLETS);
-  const [activeKioskApp, setActiveKioskApp] = useState<string>('Manabie Learner');
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [tablets, setTablets] = useState<StudentTablet[]>([]);
+  const [activeKioskApp, setActiveKioskApp] = useState<string>('Chưa kích hoạt');
   const [isAllLocked, setIsAllLocked] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSimulatingHeartbeat, setIsSimulatingHeartbeat] = useState(false);
@@ -176,9 +94,13 @@ export function TeacherClassroomView({
     );
   };
 
-  // Simulate heartbeat
+  // Simulate heartbeat and add tablet
   const handleSimulateDevice = async () => {
     setIsSimulatingHeartbeat(true);
+    const newIndex = tablets.length + 1;
+    const serial = `SM-X210-SIM-${Date.now().toString().slice(-4)}`;
+    const tableNumber = `Bàn ${newIndex < 10 ? '0' + newIndex : newIndex}`;
+
     try {
       await fetch('http://localhost:4000/api/v1/mdm/agent/heartbeat', {
         method: 'POST',
@@ -188,7 +110,7 @@ export function TeacherClassroomView({
         },
         body: JSON.stringify({
           externalDeviceId: `demo-tab-student-${Date.now().toString().slice(-4)}`,
-          serialNumber: `SM-X210-SIM-${Date.now().toString().slice(-4)}`,
+          serialNumber: serial,
           manufacturer: 'Samsung',
           model: 'Galaxy Tab A9',
           androidVersion: '14',
@@ -199,9 +121,32 @@ export function TeacherClassroomView({
           ],
         }),
       });
-      showToast('Máy tính bảng mới đã gửi tín hiệu trực tuyến thành công.');
+
+      const newTablet: StudentTablet = {
+        id: `tab-${Date.now().toString().slice(-4)}`,
+        tableNumber: tableNumber,
+        studentName: `Máy tính bảng (${tableNumber})`,
+        serial: serial,
+        battery: 95,
+        isCharging: true,
+        status: 'ONLINE',
+        activeApp: activeKioskApp !== 'Chưa kích hoạt' ? activeKioskApp : 'Manabie Learner',
+      };
+      setTablets((prev) => [...prev, newTablet]);
+      showToast(`Thiết bị ${tableNumber} (${serial}) đã kết nối trực tuyến thành công.`);
     } catch {
-      showToast('Đã mô phỏng kết nối máy tính bảng thành công.');
+      const newTablet: StudentTablet = {
+        id: `tab-${Date.now().toString().slice(-4)}`,
+        tableNumber: tableNumber,
+        studentName: `Máy tính bảng (${tableNumber})`,
+        serial: serial,
+        battery: 95,
+        isCharging: true,
+        status: 'ONLINE',
+        activeApp: activeKioskApp !== 'Chưa kích hoạt' ? activeKioskApp : 'Manabie Learner',
+      };
+      setTablets((prev) => [...prev, newTablet]);
+      showToast(`Đã kết nối thử nghiệm thiết bị ${tableNumber}.`);
     } finally {
       setIsSimulatingHeartbeat(false);
     }
@@ -474,82 +419,106 @@ export function TeacherClassroomView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {tablets.map((tab) => {
-              const isLocked = tab.status === 'LOCKED';
-              return (
-                <div
-                  key={tab.id}
-                  className={cn(
-                    'p-4 rounded-2xl border transition-all space-y-3 bg-white shadow-xs',
-                    isLocked
-                      ? 'border-rose-200 bg-rose-50/20'
-                      : 'border-slate-200 hover:border-indigo-400',
-                  )}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-indigo-900 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200/50">
-                        {tab.tableNumber}
-                      </span>
-                      <h4 className="text-sm font-bold text-slate-900 mt-1">{tab.studentName}</h4>
-                      <p className="text-[11px] font-mono text-slate-400">{tab.serial}</p>
-                    </div>
-
-                    <button
-                      onClick={() => handleToggleTablet(tab.id)}
-                      title={isLocked ? 'Mở khóa máy này' : 'Khóa màn hình máy này'}
-                      className={cn(
-                        'p-2 rounded-xl transition',
-                        isLocked
-                          ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800',
-                      )}
-                    >
-                      {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5 pt-1 border-t border-slate-100 text-xs">
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span className="text-slate-500">Ứng dụng:</span>
-                      <span className="font-semibold text-slate-800 truncate max-w-[130px]">
-                        {tab.activeApp}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span className="text-slate-500">Mức pin:</span>
-                      <div className="flex items-center gap-1 font-semibold tabular-nums text-slate-800">
-                        {tab.isCharging ? (
-                          <BatteryCharging className="w-4 h-4 text-emerald-600" />
-                        ) : tab.battery < 40 ? (
-                          <BatteryWarning className="w-4 h-4 text-amber-500" />
-                        ) : (
-                          <Battery className="w-4 h-4 text-emerald-600" />
-                        )}
-                        <span>{tab.battery}%</span>
+          {tablets.length === 0 ? (
+            <div className="p-12 rounded-2xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                <Tablet className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-slate-800">
+                  Chưa có máy tính bảng trong lớp {selectedClass}
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+                  Thiết bị của học sinh sẽ tự động xuất hiện tại đây khi kết nối mạng phòng học hoặc mở ứng dụng quản lý lớp học.
+                </p>
+              </div>
+              <button
+                onClick={handleSimulateDevice}
+                disabled={isSimulatingHeartbeat}
+                className="mt-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-2 shadow-xs"
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', isSimulatingHeartbeat && 'animate-spin')} />
+                <span>Mô phỏng kết nối 1 máy tính bảng</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {tablets.map((tab) => {
+                const isLocked = tab.status === 'LOCKED';
+                return (
+                  <div
+                    key={tab.id}
+                    className={cn(
+                      'p-4 rounded-2xl border transition-all space-y-3 bg-white shadow-xs',
+                      isLocked
+                        ? 'border-rose-200 bg-rose-50/20'
+                        : 'border-slate-200 hover:border-indigo-400',
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-indigo-900 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200/50">
+                          {tab.tableNumber}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 mt-1">{tab.studentName}</h4>
+                        <p className="text-[11px] font-mono text-slate-400">{tab.serial}</p>
                       </div>
-                    </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-slate-500">Trạng thái:</span>
-                      <span
+                      <button
+                        onClick={() => handleToggleTablet(tab.id)}
+                        title={isLocked ? 'Mở khóa máy này' : 'Khóa màn hình máy này'}
                         className={cn(
-                          'px-2 py-0.5 rounded-full text-[11px] font-medium border',
+                          'p-2 rounded-xl transition',
                           isLocked
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800',
                         )}
                       >
-                        {isLocked ? 'Đã khóa' : 'Đang học'}
-                      </span>
+                        {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1 border-t border-slate-100 text-xs">
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-500">Ứng dụng:</span>
+                        <span className="font-semibold text-slate-800 truncate max-w-[130px]">
+                          {tab.activeApp}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-500">Mức pin:</span>
+                        <div className="flex items-center gap-1 font-semibold tabular-nums text-slate-800">
+                          {tab.isCharging ? (
+                            <BatteryCharging className="w-4 h-4 text-emerald-600" />
+                          ) : tab.battery < 40 ? (
+                            <BatteryWarning className="w-4 h-4 text-amber-500" />
+                          ) : (
+                            <Battery className="w-4 h-4 text-emerald-600" />
+                          )}
+                          <span>{tab.battery}%</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-slate-500">Trạng thái:</span>
+                        <span
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-[11px] font-medium border',
+                            isLocked
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                          )}
+                        >
+                          {isLocked ? 'Đã khóa' : 'Đang học'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
 
