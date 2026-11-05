@@ -615,26 +615,40 @@ function PortalLayout(): React.ReactElement {
       {/* Collapsible Sidebar */}
       <aside
         className={cn(
-          'bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out shrink-0',
+          'bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out shrink-0 select-none',
           isSidebarCollapsed ? 'w-20' : 'w-64',
         )}
       >
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-          {!isSidebarCollapsed ? (
-            <div className="overflow-hidden">
-              <h1 className="text-base font-bold tracking-tight text-white truncate">
-                School MDM Portal
-              </h1>
-              <p className="text-xs text-slate-400 truncate mt-0.5">Quản lý Tablet Giảng dạy</p>
-            </div>
-          ) : (
-            <div className="mx-auto font-bold text-indigo-400 text-base">MDM</div>
+        <div
+          className={cn(
+            'border-b border-slate-800 flex items-center transition-all',
+            isSidebarCollapsed ? 'h-16 justify-center p-2' : 'h-16 px-4 justify-between',
           )}
+        >
+          {!isSidebarCollapsed ? (
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-sm">
+                M
+              </div>
+              <div className="overflow-hidden">
+                <h1 className="text-sm font-bold tracking-tight text-white truncate">
+                  School MDM
+                </h1>
+                <p className="text-[11px] text-slate-400 truncate">Quản lý Tablet Học tập</p>
+              </div>
+            </div>
+          ) : null}
 
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            aria-label={isSidebarCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition ml-1"
+            title={isSidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+            aria-label={isSidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+            className={cn(
+              'rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center justify-center',
+              isSidebarCollapsed
+                ? 'w-10 h-10 bg-slate-800/80 text-indigo-400 hover:bg-slate-800 hover:text-white'
+                : 'p-1.5 ml-1',
+            )}
           >
             {isSidebarCollapsed ? (
               <PanelLeft className="w-5 h-5" />
@@ -644,7 +658,12 @@ function PortalLayout(): React.ReactElement {
           </button>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav
+          className={cn(
+            'flex-1 p-2 space-y-1.5 overflow-y-auto',
+            isSidebarCollapsed ? 'flex flex-col items-center' : '',
+          )}
+        >
           {visibleMenuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = MENU_ICONS[item.id] ?? LayoutDashboard;
@@ -653,13 +672,15 @@ function PortalLayout(): React.ReactElement {
               <Link
                 key={item.id}
                 to={item.path}
-                title={isSidebarCollapsed ? item.label : undefined}
+                title={item.label}
                 className={cn(
                   'flex items-center rounded-xl text-sm font-medium transition-colors',
-                  isSidebarCollapsed ? 'justify-center p-3' : 'gap-3 px-3.5 py-2.5',
+                  isSidebarCollapsed
+                    ? 'w-11 h-11 justify-center p-0'
+                    : 'gap-3 px-3.5 py-2.5 w-full',
                   isActive
                     ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+                    : 'text-slate-400 hover:bg-slate-800/80 hover:text-white',
                 )}
               >
                 <Icon className={cn('shrink-0', isSidebarCollapsed ? 'w-5 h-5' : 'w-4 h-4')} />
@@ -670,16 +691,24 @@ function PortalLayout(): React.ReactElement {
         </nav>
 
         {/* Quick onboarding button at bottom of sidebar */}
-        <div className="p-3 border-t border-slate-800">
+        <div
+          className={cn(
+            'border-t border-slate-800',
+            isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-3',
+          )}
+        >
           <button
             onClick={() => setShowOnboarding(true)}
             title="Hướng dẫn Onboarding"
+            aria-label="Hướng dẫn Onboarding"
             className={cn(
-              'w-full rounded-xl bg-slate-800/80 hover:bg-slate-800 text-indigo-300 text-xs font-semibold flex items-center transition',
-              isSidebarCollapsed ? 'justify-center p-3' : 'justify-center gap-2 px-3 py-2.5',
+              'rounded-xl bg-slate-800/80 hover:bg-slate-800 text-indigo-300 text-xs font-semibold flex items-center transition',
+              isSidebarCollapsed
+                ? 'w-11 h-11 justify-center p-0'
+                : 'w-full justify-center gap-2 px-3 py-2.5',
             )}
           >
-            <HelpCircle className="w-4 h-4 shrink-0" />
+            <HelpCircle className={cn('shrink-0', isSidebarCollapsed ? 'w-5 h-5' : 'w-4 h-4')} />
             {!isSidebarCollapsed && <span>Hướng dẫn</span>}
           </button>
         </div>
