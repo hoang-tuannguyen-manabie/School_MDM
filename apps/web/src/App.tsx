@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cn, getCommandStatusBadgeTone, getDeviceStatusBadgeTone } from '@school-mdm/ui';
+import { cn, getCommandStatusBadgeTone } from '@school-mdm/ui';
 import {
   COMMAND_STATUSES,
   MDM_PROVIDER_TYPES,
   ROLES,
   type CommandStatus,
-  type DeviceStatus,
   type MdmProviderType,
 } from '@school-mdm/contracts';
 import { SIDEBAR_MENU_ITEMS } from './navigation/menu';
@@ -36,6 +35,11 @@ import {
   BookOpen,
   Pin,
   LogOut,
+  Plus,
+  Trash2,
+  Radio,
+  Battery,
+  BatteryWarning,
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
@@ -95,6 +99,20 @@ function getProviderCapabilities(provider: MdmProviderType): CapabilityInfo {
   };
 }
 
+interface RealDeviceItem {
+  id: string;
+  imei: string;
+  serialNumber?: string;
+  name: string;
+  classCode: string;
+  status: 'PENDING_DETECTION' | 'ONLINE' | 'OFFLINE';
+  batteryLevel?: number | null;
+  model: string;
+  manufacturer: string;
+  lastSeenAt: string | null;
+  lastSeen: string;
+}
+
 function OverviewView({
   provider,
   onOpenOnboarding,
@@ -103,56 +121,35 @@ function OverviewView({
   onOpenOnboarding: () => void;
 }): React.ReactElement {
   const navigate = useNavigate();
-  const [isSimulatingHeartbeat, setIsSimulatingHeartbeat] = useState(false);
-  const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
+  const [devices, setDevices] = useState<RealDeviceItem[]>([]);
 
-  const handleSimulateHeartbeat = async () => {
-    setIsSimulatingHeartbeat(true);
-    setSimulationStatus('Đang gửi tín hiệu kết nối thử nghiệm từ máy tính bảng...');
-
-    try {
-      const res = await fetch('http://localhost:4000/api/v1/mdm/agent/heartbeat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-classroom-dpc-secret': 'school_mdm_classroom_dpc_enrollment_secret_2026',
-        },
-        body: JSON.stringify({
-          externalDeviceId: 'demo-tab-samsung-01',
-          serialNumber: 'SM-X210-DEMO-2026',
-          manufacturer: 'Samsung',
-          model: 'Galaxy Tab A9 (Bàn 1)',
-          androidVersion: '14',
-          sdkVersion: 34,
-          batteryLevel: 92,
-          installedApps: [
-            {
-              packageName: 'vn.manabie.learner',
-              name: 'Manabie Learner',
-              versionName: '2.4.0',
-              versionCode: 20400,
-            },
-            {
-              packageName: 'org.geogebra.android',
-              name: 'GeoGebra Math',
-              versionName: '5.0.0',
-              versionCode: 50000,
-            },
-          ],
-        }),
-      });
-
-      if (res.ok) {
-        setSimulationStatus('Máy tính bảng Samsung Galaxy Tab A9 đã kết nối và đang trực tuyến!');
-      } else {
-        setSimulationStatus('Chưa thể kết nối tới máy chủ phòng học. Vui lòng kiểm tra lại kết nối mạng.');
+  useEffect(() => {
+    let isMounted = true;
+    const loadDevices = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/v1/devices/classroom-status');
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json.data) {
+            setDevices(json.data);
+          }
+        }
+      } catch {
+        // Backend temporarily unavailable
       }
-    } catch {
-      setSimulationStatus('Đã gửi tín hiệu kết nối thử nghiệm thành công.');
-    } finally {
-      setIsSimulatingHeartbeat(false);
-    }
-  };
+    };
+
+    loadDevices();
+    const interval = setInterval(loadDevices, 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const totalCount = devices.length;
+  const onlineCount = devices.filter((d) => d.status === 'ONLINE').length;
+  const pendingCount = devices.filter((d) => d.status === 'PENDING_DETECTION').length;
 
   return (
     <div className="space-y-6">
@@ -161,7 +158,7 @@ function OverviewView({
         <div className="space-y-1.5">
           <h3 className="text-xl font-bold tracking-tight text-white">5 bước đưa máy tính bảng vào giảng dạy</h3>
           <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-            Bắt đầu kết nối máy tính bảng của học sinh và quản lý toàn bộ thiết bị trong giờ dạy học một cách dễ dàng và an toàn.
+            Kết nối máy tính bảng học sinh bằng mã IMEI thật. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
           </p>
         </div>
 
@@ -173,67 +170,54 @@ function OverviewView({
             <PlayCircle className="w-4 h-4" /> Xem Hướng dẫn 5 bước
           </button>
           <button
-            onClick={handleSimulateHeartbeat}
-            disabled={isSimulatingHeartbeat}
+            onClick={() => navigate('/devices')}
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSimulatingHeartbeat ? 'animate-spin' : ''}`} />
-            {isSimulatingHeartbeat ? 'Đang gửi...' : 'Thử nghiệm kết nối máy tính bảng'}
+            <Plus className="w-4 h-4 text-indigo-400" />
+            <span>Đăng ký máy thật (IMEI)</span>
           </button>
         </div>
       </div>
-
-      {simulationStatus && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 flex items-center justify-between shadow-sm">
-          <span>{simulationStatus}</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/devices')}
-              className="font-bold underline text-emerald-800 hover:text-emerald-950"
-            >
-              Xem danh sách Thiết bị →
-            </button>
-            <button
-              onClick={() => setSimulationStatus(null)}
-              aria-label="Đóng thông báo"
-              className="text-emerald-700 hover:text-emerald-950 p-1 rounded-lg hover:bg-emerald-200/50 transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
           <p className="text-xs font-medium text-slate-500">Lớp học phụ trách</p>
           <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
-            0 Lớp học
+            4 Lớp học
           </p>
-          <p className="text-xs text-slate-500 mt-1">Chưa có phân công lớp học</p>
+          <p className="text-xs text-slate-500 mt-1">Lớp 6A1, 6A2, 7A1, 8A1</p>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-slate-500">Thiết bị đang hoạt động</p>
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
+            {onlineCount > 0 ? (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            ) : null}
           </div>
           <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
-            {simulationStatus && simulationStatus.includes('trực tuyến')
-              ? '1 Thiết bị trực tuyến'
-              : '0 Thiết bị'}
+            {onlineCount} Máy trực tuyến
           </p>
-          <p className="text-xs text-slate-500 mt-1">Cập nhật tự động theo thời gian thực</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {totalCount > 0 ? `Trên tổng số ${totalCount} máy đã nhập IMEI` : 'Chưa có máy trực tuyến'}
+          </p>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
-          <p className="text-xs font-medium text-slate-500">Phiên học đang diễn ra</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">0 Tiết học</p>
-          <p className="text-xs text-slate-500 mt-1">Sẵn sàng khởi tạo tiết học mới</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-500">Chờ thiết bị bật nguồn</p>
+            {pendingCount > 0 ? (
+              <Radio className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+            ) : null}
+          </div>
+          <p className="text-2xl font-bold text-amber-700 mt-1 tabular-nums">
+            {pendingCount} Thiết bị
+          </p>
+          <p className="text-xs text-slate-500 mt-1">Tự động kết nối khi máy mở nguồn</p>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
@@ -243,7 +227,7 @@ function OverviewView({
           </p>
           <p className="text-xs text-slate-500 mt-1">
             {provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC
-              ? 'Đầy đủ Kiosk và Khóa tức thời'
+              ? 'Tự động bắt sóng qua LAN/Wi-Fi'
               : 'Chế độ quản lý mở rộng'}
           </p>
         </div>
@@ -273,11 +257,11 @@ function OverviewView({
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Kết nối Máy tính bảng</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Nhập IMEI Thiết bị Thật</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Kết nối máy tính bảng của học sinh vào hệ thống quản lý phòng học.
+              Đăng ký mã IMEI thiết bị vật lý để hệ thống tự động nhận diện khi máy khởi động.
             </p>
           </div>
 
@@ -349,6 +333,8 @@ function DevicesAndSessionControlView({
   title: string;
 }): React.ReactElement {
   const caps = getProviderCapabilities(provider);
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
+  const [devices, setDevices] = useState<RealDeviceItem[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     actionName: string;
     commandType: string;
@@ -359,23 +345,100 @@ function DevicesAndSessionControlView({
     detail: string;
   } | null>(null);
 
-  const [devices] = useState<
-    Array<{
-      id: string;
-      name: string;
-      serial: string;
-      classCode: string;
-      status: DeviceStatus;
-      lastSeen: string;
-    }>
-  >([]);
+  // Real device pre-registration modal
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollImei, setEnrollImei] = useState('');
+  const [enrollName, setEnrollName] = useState('');
+  const [enrollClassCode, setEnrollClassCode] = useState('6A1');
+  const [isSubmittingEnroll, setIsSubmittingEnroll] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+
+  // Poll real devices
+  const fetchDevices = useCallback(async () => {
+    try {
+      const url =
+        selectedClassFilter && selectedClassFilter !== 'ALL'
+          ? `http://localhost:4000/api/v1/devices/classroom-status?classCode=${selectedClassFilter}`
+          : 'http://localhost:4000/api/v1/devices/classroom-status';
+      const res = await fetch(url);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data)) {
+          setDevices(json.data);
+        }
+      }
+    } catch {
+      // Backend temporarily unavailable
+    }
+  }, [selectedClassFilter]);
+
+  useEffect(() => {
+    fetchDevices();
+    const timer = setInterval(fetchDevices, 3000);
+    return () => clearInterval(timer);
+  }, [fetchDevices]);
+
+  // Handle register physical device
+  const handleEnrollDevice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanImei = enrollImei.trim();
+    if (!cleanImei) {
+      setEnrollError('Vui lòng nhập mã IMEI hoặc Số Serial');
+      return;
+    }
+
+    setIsSubmittingEnroll(true);
+    setEnrollError(null);
+
+    try {
+      const res = await fetch('http://localhost:4000/api/v1/devices/pre-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imei: cleanImei,
+          name: enrollName.trim() || `Máy Bàn ${devices.length + 1}`,
+          classCode: enrollClassCode || '6A1',
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || 'Không thể đăng ký thiết bị');
+      }
+
+      setEnrollImei('');
+      setEnrollName('');
+      setShowEnrollModal(false);
+      await fetchDevices();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Lỗi kết nối';
+      setEnrollError(message);
+    } finally {
+      setIsSubmittingEnroll(false);
+    }
+  };
+
+  // Delete physical device
+  const handleDeleteDevice = async (id: string, name: string) => {
+    if (!window.confirm(`Xác nhận xóa máy "${name}" khỏi hệ thống?`)) return;
+    try {
+      const res = await fetch(`http://localhost:4000/api/v1/devices/pre-register/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        await fetchDevices();
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleConfirmDispatch = () => {
     if (!confirmModal) return;
     setLastCommandResult({
       actionName: confirmModal.actionName,
       status: COMMAND_STATUSES.SENT,
-      detail: 'Lệnh đã được gửi đến thiết bị trong lớp học và đang được áp dụng.',
+      detail: 'Lệnh đã được phát đến tất cả thiết bị trong lớp học.',
     });
     setConfirmModal(null);
   };
@@ -386,11 +449,38 @@ function DevicesAndSessionControlView({
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">
-            Điều khiển tập trung tất cả máy tính bảng trong phòng học.
+            Quản lý máy tính bảng thật qua mã IMEI và điều khiển lớp học tập trung.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Class Filter */}
+          <select
+            value={selectedClassFilter}
+            onChange={(e) => setSelectedClassFilter(e.target.value)}
+            aria-label="Lọc theo lớp học"
+            className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 transition"
+          >
+            <option value="ALL">Tất cả lớp học</option>
+            <option value="6A1">Lớp 6A1</option>
+            <option value="6A2">Lớp 6A2</option>
+            <option value="7A1">Lớp 7A1</option>
+            <option value="8A1">Lớp 8A1</option>
+          </select>
+
+          {/* Enroll Real Device button */}
+          <button
+            type="button"
+            onClick={() => {
+              setEnrollError(null);
+              setShowEnrollModal(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Đăng ký máy thật (IMEI)</span>
+          </button>
+
           <button
             type="button"
             disabled={!caps.remoteLock.supported}
@@ -409,7 +499,7 @@ function DevicesAndSessionControlView({
             )}
           >
             <Lock className="w-3.5 h-3.5 shrink-0" />
-            <span>Khóa màn hình lớp học</span>
+            <span>Khóa màn hình</span>
           </button>
 
           <button
@@ -430,28 +520,7 @@ function DevicesAndSessionControlView({
             )}
           >
             <Pin className="w-3.5 h-3.5 shrink-0" />
-            <span>Bật Kiosk Tiết Học</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={!caps.appAllowlist.supported}
-            title={caps.appAllowlist.reason ?? 'Chỉ cho phép mở các ứng dụng trong danh mục môn học'}
-            onClick={() =>
-              setConfirmModal({
-                actionName: 'Áp dụng Danh sách Ứng dụng Cho phép',
-                commandType: 'APPLY_ALLOWLIST',
-              })
-            }
-            className={cn(
-              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
-              caps.appAllowlist.supported
-                ? 'bg-slate-800 text-white border-slate-900 hover:bg-slate-900'
-                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
-            )}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Áp dụng Danh sách Cho phép</span>
+            <span>Bật Kiosk</span>
           </button>
         </div>
       </div>
@@ -518,49 +587,94 @@ function DevicesAndSessionControlView({
         </div>
       )}
 
-      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+      {/* Real Devices Table */}
+      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
               <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
-              <th className="py-3 px-4 font-semibold">Mã thiết bị / Serial</th>
+              <th className="py-3 px-4 font-semibold">Mã IMEI / Serial</th>
               <th className="py-3 px-4 font-semibold">Lớp học</th>
               <th className="py-3 px-4 font-semibold">Trạng thái</th>
+              <th className="py-3 px-4 font-semibold">Phần cứng</th>
+              <th className="py-3 px-4 font-semibold">Mức pin</th>
               <th className="py-3 px-4 font-semibold">Lần cuối phản hồi</th>
+              <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {devices.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <Tablet className="w-8 h-8 text-slate-300" />
-                    <p className="text-sm font-semibold text-slate-700">Chưa có thiết bị nào trong hệ thống</p>
-                    <p className="text-xs text-slate-400 max-w-sm">
-                      Thiết bị sẽ tự động xuất hiện tại đây khi học sinh mở ứng dụng Classroom DPC hoặc hoàn tất đăng ký MDM.
-                    </p>
+                <td colSpan={8} className="py-12 text-center text-slate-500">
+                  <div className="flex flex-col items-center justify-center space-y-3">
+                    <Tablet className="w-8 h-8 text-indigo-400" />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Chưa có thiết bị nào trong hệ thống
+                      </p>
+                      <p className="text-xs text-slate-500 max-w-md mt-0.5">
+                        Bấm nút "Đăng ký máy thật (IMEI)" bên trên để thêm mã IMEI. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
+                      </p>
+                    </div>
                   </div>
                 </td>
               </tr>
             ) : (
               devices.map((d) => {
-                const badge = getDeviceStatusBadgeTone(d.status);
+                const isOnline = d.status === 'ONLINE';
+                const isPending = d.status === 'PENDING_DETECTION';
+
                 return (
                   <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">{d.serial}</td>
-                    <td className="py-3 px-4 font-medium">{d.classCode}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">
+                      {d.imei}
+                    </td>
+                    <td className="py-3 px-4 font-medium text-xs text-slate-700">{d.classCode}</td>
                     <td className="py-3 px-4">
-                      <span
-                        className={cn(
-                          'px-2.5 py-1 rounded-full text-xs font-medium border',
-                          badge.className,
-                        )}
-                      >
-                        {badge.label}
-                      </span>
+                      {isOnline ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Trực tuyến
+                        </span>
+                      ) : isPending ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                          Chờ bật nguồn
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          Ngoại tuyến
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-xs text-slate-700">
+                      {d.model}
+                    </td>
+                    <td className="py-3 px-4 text-xs tabular-nums text-slate-700">
+                      {d.batteryLevel !== null && d.batteryLevel !== undefined ? (
+                        <span className="flex items-center gap-1 font-semibold">
+                          {d.batteryLevel < 30 ? (
+                            <BatteryWarning className="w-3.5 h-3.5 text-amber-500" />
+                          ) : (
+                            <Battery className="w-3.5 h-3.5 text-emerald-600" />
+                          )}
+                          {d.batteryLevel}%
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => handleDeleteDevice(d.id, d.name)}
+                        title="Xóa máy"
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })
@@ -568,6 +682,100 @@ function DevicesAndSessionControlView({
           </tbody>
         </table>
       </div>
+
+      {/* Enroll Real Device Modal */}
+      {showEnrollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật
+              </h3>
+              <button
+                onClick={() => setShowEnrollModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Nhập mã IMEI của máy tính bảng vật lý. Khi thiết bị được mở nguồn, ứng dụng Classroom DPC sẽ gửi tín hiệu và hệ thống tự động kết nối vào lớp học.
+            </p>
+
+            {enrollError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {enrollError}
+              </div>
+            )}
+
+            <form onSubmit={handleEnrollDevice} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Mã IMEI / Số Serial thiết bị <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={enrollImei}
+                  onChange={(e) => setEnrollImei(e.target.value)}
+                  placeholder="Ví dụ: 863456041234567"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Mã 15 chữ số in sau lưng máy hoặc bấm <code>*#06#</code> trên máy tính bảng
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên định danh / Vị trí bàn học
+                </label>
+                <input
+                  type="text"
+                  value={enrollName}
+                  onChange={(e) => setEnrollName(e.target.value)}
+                  placeholder={`Ví dụ: Máy Bàn 0${devices.length + 1}`}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Phân công Lớp học
+                </label>
+                <select
+                  value={enrollClassCode}
+                  onChange={(e) => setEnrollClassCode(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                >
+                  <option value="6A1">Lớp 6A1</option>
+                  <option value="6A2">Lớp 6A2</option>
+                  <option value="7A1">Lớp 7A1</option>
+                  <option value="8A1">Lớp 8A1</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEnrollModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEnroll}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
+                >
+                  {isSubmittingEnroll ? 'Đang lưu...' : 'Lưu & Chờ thiết bị bật nguồn'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

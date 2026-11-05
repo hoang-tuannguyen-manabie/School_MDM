@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -48,6 +49,51 @@ export class DevicesController {
   ): Promise<ApiResponse<{ deviceId: string; status: string }>> {
     this.verifyAgentSharedSecret(secret);
     const result = await this.devicesService.processAgentHeartbeat(body);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/pre-register')
+  @HttpCode(HttpStatus.OK)
+  async preRegisterDevice(
+    @Body()
+    body: {
+      imei: string;
+      serialNumber?: string;
+      name: string;
+      classCode?: string;
+    },
+  ) {
+    const record = this.devicesService.preRegisterDevice(body);
+    return {
+      data: record,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Get('devices/classroom-status')
+  async getClassroomStatus(@Query('classCode') classCode?: string) {
+    const list = this.devicesService.getClassroomDevices(classCode);
+    return {
+      data: list,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Delete('devices/pre-register/:id')
+  async deletePreRegisteredDevice(@Param('id') id: string) {
+    const result = this.devicesService.deletePreRegisteredDevice(id);
     return {
       data: result,
       meta: {

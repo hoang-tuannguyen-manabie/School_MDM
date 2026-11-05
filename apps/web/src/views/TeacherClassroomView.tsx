@@ -1,33 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Lock,
   Unlock,
   Pin,
-  RefreshCw,
   Sparkles,
   Shield,
   CheckCircle2,
   Clock,
   Battery,
-  BatteryCharging,
   BatteryWarning,
   Send,
   X,
   Play,
   Square,
   Tablet,
+  Plus,
+  Trash2,
+  Radio,
+  Info,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 
-interface StudentTablet {
+export interface ClassroomDeviceRecord {
   id: string;
-  tableNumber: string;
-  studentName: string;
-  serial: string;
-  battery: number;
-  isCharging: boolean;
-  status: 'ONLINE' | 'LOCKED' | 'OFFLINE';
-  activeApp: string;
+  imei: string;
+  serialNumber?: string;
+  name: string;
+  classCode: string;
+  status: 'PENDING_DETECTION' | 'ONLINE' | 'OFFLINE';
+  batteryLevel?: number | null;
+  model: string;
+  manufacturer: string;
+  lastSeenAt: string | null;
+  lastSeen: string;
+  activeApp?: string;
+  isLocked?: boolean;
 }
 
 interface TeacherClassroomViewProps {
@@ -41,127 +48,142 @@ export function TeacherClassroomView({
 }: TeacherClassroomViewProps): React.ReactElement {
   const [selectedClass, setSelectedClass] = useState('6A1');
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const [tablets, setTablets] = useState<StudentTablet[]>([]);
+  const [devices, setDevices] = useState<ClassroomDeviceRecord[]>([]);
   const [activeKioskApp, setActiveKioskApp] = useState<string>('Chưa kích hoạt');
   const [isAllLocked, setIsAllLocked] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isSimulatingHeartbeat, setIsSimulatingHeartbeat] = useState(false);
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+
+  // Modal Enroll Real Device by IMEI
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollImei, setEnrollImei] = useState('');
+  const [enrollName, setEnrollName] = useState('');
+  const [enrollClassCode, setEnrollClassCode] = useState('6A1');
+  const [isSubmittingEnroll, setIsSubmittingEnroll] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
-    }, 4000);
+    }, 4500);
+  };
+
+  // Poll real devices every 3 seconds
+  const fetchClassroomDevices = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:4000/api/v1/devices/classroom-status?classCode=${selectedClass}`,
+      );
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data)) {
+          setDevices(json.data);
+        }
+      }
+    } catch {
+      // Backend is temporarily unreachable, silently ignore
+    }
+  }, [selectedClass]);
+
+  useEffect(() => {
+    fetchClassroomDevices();
+    const timer = setInterval(fetchClassroomDevices, 3000);
+    return () => clearInterval(timer);
+  }, [fetchClassroomDevices]);
+
+  // Handle register physical device by IMEI
+  const handleEnrollDevice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanImei = enrollImei.trim();
+    if (!cleanImei) {
+      setEnrollError('Vui lòng nhập mã IMEI hoặc Số Serial của thiết bị');
+      return;
+    }
+
+    setIsSubmittingEnroll(true);
+    setEnrollError(null);
+
+    try {
+      const res = await fetch('http://localhost:4000/api/v1/devices/pre-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imei: cleanImei,
+          name: enrollName.trim() || `Máy Bàn ${devices.length + 1}`,
+          classCode: enrollClassCode || selectedClass,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || 'Không thể đăng ký thiết bị');
+      }
+
+      showToast(
+        `Đã đăng ký máy với IMEI: ${cleanImei}. Hãy bật nguồn máy tính bảng, hệ thống sẽ tự động nhận diện.`,
+      );
+      setEnrollImei('');
+      setEnrollName('');
+      setShowEnrollModal(false);
+      await fetchClassroomDevices();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Có lỗi xảy ra khi lưu';
+      setEnrollError(message);
+    } finally {
+      setIsSubmittingEnroll(false);
+    }
+  };
+
+  // Delete pre-registered device
+  const handleDeleteDevice = async (id: string, name: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa máy "${name}" khỏi phòng học?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/v1/devices/pre-register/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        showToast(`Đã gỡ thiết bị "${name}" khỏi danh sách phòng học.`);
+        await fetchClassroomDevices();
+      }
+    } catch {
+      showToast('Không thể xóa thiết bị. Vui lòng thử lại.');
+    }
   };
 
   // Lock entire classroom
   const handleLockAll = () => {
     setIsAllLocked(true);
-    setTablets((prev) => prev.map((t) => ({ ...t, status: 'LOCKED' })));
     showToast('Đã phát lệnh KHÓA MÀN HÌNH toàn bộ máy tính bảng trong phòng học.');
   };
 
   // Unlock entire classroom
   const handleUnlockAll = () => {
     setIsAllLocked(false);
-    setTablets((prev) => prev.map((t) => ({ ...t, status: 'ONLINE' })));
     showToast('Đã mở khóa toàn bộ máy tính bảng. Học sinh có thể làm bài tiếp tục.');
   };
 
   // Apply Kiosk mode for specific educational app
   const handleApplyKiosk = (appName: string) => {
     setActiveKioskApp(appName);
-    setTablets((prev) =>
-      prev.map((t) => ({ ...t, activeApp: appName, status: 'ONLINE' })),
-    );
     setIsAllLocked(false);
-    showToast(`Đã ghim ứng dụng [${appName}] lên màn hình tất cả học sinh.`);
-  };
-
-  // Toggle individual tablet lock
-  const handleToggleTablet = (id: string) => {
-    setTablets((prev) =>
-      prev.map((t) => {
-        if (t.id === id) {
-          const newStatus = t.status === 'LOCKED' ? 'ONLINE' : 'LOCKED';
-          showToast(`Đã ${newStatus === 'LOCKED' ? 'khóa' : 'mở khóa'} thiết bị ${t.tableNumber}`);
-          return { ...t, status: newStatus };
-        }
-        return t;
-      }),
-    );
-  };
-
-  // Simulate heartbeat and add tablet
-  const handleSimulateDevice = async () => {
-    setIsSimulatingHeartbeat(true);
-    const newIndex = tablets.length + 1;
-    const serial = `SM-X210-SIM-${Date.now().toString().slice(-4)}`;
-    const tableNumber = `Bàn ${newIndex < 10 ? '0' + newIndex : newIndex}`;
-
-    try {
-      await fetch('http://localhost:4000/api/v1/mdm/agent/heartbeat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-classroom-dpc-secret': 'school_mdm_classroom_dpc_enrollment_secret_2026',
-        },
-        body: JSON.stringify({
-          externalDeviceId: `demo-tab-student-${Date.now().toString().slice(-4)}`,
-          serialNumber: serial,
-          manufacturer: 'Samsung',
-          model: 'Galaxy Tab A9',
-          androidVersion: '14',
-          sdkVersion: 34,
-          batteryLevel: 95,
-          installedApps: [
-            { packageName: 'vn.manabie.learner', name: 'Manabie Learner', versionName: '2.4.0', versionCode: 20400 },
-          ],
-        }),
-      });
-
-      const newTablet: StudentTablet = {
-        id: `tab-${Date.now().toString().slice(-4)}`,
-        tableNumber: tableNumber,
-        studentName: `Máy tính bảng (${tableNumber})`,
-        serial: serial,
-        battery: 95,
-        isCharging: true,
-        status: 'ONLINE',
-        activeApp: activeKioskApp !== 'Chưa kích hoạt' ? activeKioskApp : 'Manabie Learner',
-      };
-      setTablets((prev) => [...prev, newTablet]);
-      showToast(`Thiết bị ${tableNumber} (${serial}) đã kết nối trực tuyến thành công.`);
-    } catch {
-      const newTablet: StudentTablet = {
-        id: `tab-${Date.now().toString().slice(-4)}`,
-        tableNumber: tableNumber,
-        studentName: `Máy tính bảng (${tableNumber})`,
-        serial: serial,
-        battery: 95,
-        isCharging: true,
-        status: 'ONLINE',
-        activeApp: activeKioskApp !== 'Chưa kích hoạt' ? activeKioskApp : 'Manabie Learner',
-      };
-      setTablets((prev) => [...prev, newTablet]);
-      showToast(`Đã kết nối thử nghiệm thiết bị ${tableNumber}.`);
-    } finally {
-      setIsSimulatingHeartbeat(false);
-    }
+    showToast(`Đã gửi lệnh ghim ứng dụng [${appName}] lên màn hình tất cả máy tính bảng.`);
   };
 
   const handleSendBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
     if (!broadcastMessage.trim()) return;
-    showToast(`Đã gửi thông báo đến cả lớp: "${broadcastMessage}"`);
+    showToast(`Đã gửi thông báo đến phòng học: "${broadcastMessage}"`);
     setBroadcastMessage('');
     setShowBroadcastModal(false);
   };
 
-  const onlineCount = tablets.filter((t) => t.status === 'ONLINE').length;
-  const lockedCount = tablets.filter((t) => t.status === 'LOCKED').length;
+  const onlineDevices = devices.filter((d) => d.status === 'ONLINE');
+  const pendingDevices = devices.filter((d) => d.status === 'PENDING_DETECTION');
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -188,7 +210,10 @@ export function TeacherClassroomView({
           {/* Class selector */}
           <select
             value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
+            onChange={(e) => {
+              setSelectedClass(e.target.value);
+              setEnrollClassCode(e.target.value);
+            }}
             aria-label="Chọn lớp giảng dạy"
             className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 transition"
           >
@@ -366,23 +391,23 @@ export function TeacherClassroomView({
           {/* Classroom Stat Counters */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Sĩ số thiết bị</span>
+              <span className="text-[11px] text-slate-500">Tổng thiết bị đã nhập</span>
               <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">
-                {tablets.length} Máy tính bảng
+                {devices.length} Máy tính bảng
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Đang hoạt động</span>
+              <span className="text-[11px] text-slate-500">Đang trực tuyến</span>
               <p className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">
-                {onlineCount} Máy trực tuyến
+                {onlineDevices.length} Máy hoạt động
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Đang khóa màn hình</span>
-              <p className="text-xl font-bold text-rose-700 tabular-nums mt-0.5">
-                {lockedCount} Máy
+              <span className="text-[11px] text-slate-500">Chờ thiết bị bật nguồn</span>
+              <p className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">
+                {pendingDevices.length} Máy
               </p>
             </div>
 
@@ -395,122 +420,158 @@ export function TeacherClassroomView({
           </div>
         </div>
 
-        {/* Live Grid of Student Tablets */}
+        {/* Live Grid of Physical Student Tablets */}
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Danh Sách Máy Tính Bảng Theo Bàn Học
+                Danh Sách Máy Tính Bảng Thực Tế Theo Bàn Học
               </h3>
               <p className="text-xs text-slate-500">
-                Theo dõi tình trạng kết nối, dung lượng pin và ứng dụng bài học của từng học sinh
+                Nhập mã IMEI để đăng ký máy. Khi máy tính bảng khởi động lên sẽ tự động nhận diện và kết nối.
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSimulateDevice}
-                disabled={isSimulatingHeartbeat}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
-              >
-                <RefreshCw className={cn('w-3.5 h-3.5 text-indigo-600', isSimulatingHeartbeat && 'animate-spin')} />
-                <span>{isSimulatingHeartbeat ? 'Đang gửi...' : 'Thử kết nối thêm 1 máy'}</span>
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setEnrollError(null);
+                setEnrollClassCode(selectedClass);
+                setShowEnrollModal(true);
+              }}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Đăng ký máy thật (Nhập IMEI)</span>
+            </button>
           </div>
 
-          {tablets.length === 0 ? (
-            <div className="p-12 rounded-2xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
-                <Tablet className="w-6 h-6" />
+          {devices.length === 0 ? (
+            <div className="p-12 rounded-2xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-center space-y-4 shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-xs">
+                <Tablet className="w-7 h-7" />
               </div>
-              <div className="space-y-1">
-                <h4 className="text-sm font-bold text-slate-800">
-                  Chưa có máy tính bảng trong lớp {selectedClass}
+              <div className="space-y-1.5 max-w-md">
+                <h4 className="text-sm font-bold text-slate-900">
+                  Chưa có máy tính bảng nào trong lớp {selectedClass}
                 </h4>
-                <p className="text-xs text-slate-500 max-w-md leading-relaxed">
-                  Thiết bị của học sinh sẽ tự động xuất hiện tại đây khi kết nối mạng phòng học hoặc mở ứng dụng quản lý lớp học.
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Bắt đầu kết nối máy thật bằng cách bấm nút bên dưới và nhập mã IMEI (15 chữ số) in trên thân máy.
+                  Ngay khi học sinh bật nguồn máy tính bảng, hệ thống sẽ tự động bắt sóng và hiển thị ngay tại đây.
                 </p>
               </div>
+
               <button
-                onClick={handleSimulateDevice}
-                disabled={isSimulatingHeartbeat}
-                className="mt-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-2 shadow-xs"
+                onClick={() => {
+                  setEnrollError(null);
+                  setEnrollClassCode(selectedClass);
+                  setShowEnrollModal(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-2 shadow-xs"
               >
-                <RefreshCw className={cn('w-3.5 h-3.5', isSimulatingHeartbeat && 'animate-spin')} />
-                <span>Mô phỏng kết nối 1 máy tính bảng</span>
+                <Plus className="w-4 h-4" />
+                <span>Nhập mã IMEI kết nối máy thật</span>
               </button>
+
+              <div className="w-full max-w-lg mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                  <Info className="w-4 h-4 text-indigo-600" />
+                  <span>Cơ chế tự động nhận diện (Auto-detection)</span>
+                </div>
+                <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside leading-relaxed">
+                  <li>Thầy/Cô nhập mã IMEI và gán số bàn học trên màn hình này.</li>
+                  <li>Cài đặt Classroom DPC Agent lên máy tính bảng một lần duy nhất.</li>
+                  <li>Khi máy tính bảng được bật nguồn hoặc cắm sạc trong phòng học, hệ thống sẽ tự động ghép nối và chuyển sang trạng thái <strong>Trực tuyến</strong>.</li>
+                </ol>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {tablets.map((tab) => {
-                const isLocked = tab.status === 'LOCKED';
+              {devices.map((device) => {
+                const isOnline = device.status === 'ONLINE';
+                const isPending = device.status === 'PENDING_DETECTION';
+
                 return (
                   <div
-                    key={tab.id}
+                    key={device.id}
                     className={cn(
                       'p-4 rounded-2xl border transition-all space-y-3 bg-white shadow-xs',
-                      isLocked
-                        ? 'border-rose-200 bg-rose-50/20'
-                        : 'border-slate-200 hover:border-indigo-400',
+                      isOnline
+                        ? 'border-emerald-200 hover:border-emerald-300'
+                        : isPending
+                          ? 'border-amber-200 bg-amber-50/15'
+                          : 'border-slate-200 bg-slate-50/40',
                     )}
                   >
                     <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-indigo-900 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200/50">
-                          {tab.tableNumber}
-                        </span>
-                        <h4 className="text-sm font-bold text-slate-900 mt-1">{tab.studentName}</h4>
-                        <p className="text-[11px] font-mono text-slate-400">{tab.serial}</p>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-slate-800 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200">
+                            {device.name}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500">
+                            {device.classCode}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 truncate max-w-[150px]">
+                          {device.model || 'Android Tablet'}
+                        </h4>
+                        <p className="text-[11px] font-mono text-slate-500">
+                          IMEI: {device.imei}
+                        </p>
                       </div>
 
                       <button
-                        onClick={() => handleToggleTablet(tab.id)}
-                        title={isLocked ? 'Mở khóa máy này' : 'Khóa màn hình máy này'}
-                        className={cn(
-                          'p-2 rounded-xl transition',
-                          isLocked
-                            ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800',
-                        )}
+                        onClick={() => handleDeleteDevice(device.id, device.name)}
+                        title="Xóa thiết bị này"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
                       >
-                        {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
-                    <div className="space-y-1.5 pt-1 border-t border-slate-100 text-xs">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="text-slate-500">Ứng dụng:</span>
-                        <span className="font-semibold text-slate-800 truncate max-w-[130px]">
-                          {tab.activeApp}
-                        </span>
+                    <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                      {/* Status indicator */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Trạng thái:</span>
+                        {isOnline ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Trực tuyến
+                          </span>
+                        ) : isPending ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                            Chờ bật nguồn
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            Ngoại tuyến
+                          </span>
+                        )}
                       </div>
 
+                      {/* Battery level */}
                       <div className="flex items-center justify-between text-slate-600">
                         <span className="text-slate-500">Mức pin:</span>
-                        <div className="flex items-center gap-1 font-semibold tabular-nums text-slate-800">
-                          {tab.isCharging ? (
-                            <BatteryCharging className="w-4 h-4 text-emerald-600" />
-                          ) : tab.battery < 40 ? (
-                            <BatteryWarning className="w-4 h-4 text-amber-500" />
-                          ) : (
-                            <Battery className="w-4 h-4 text-emerald-600" />
-                          )}
-                          <span>{tab.battery}%</span>
-                        </div>
+                        {device.batteryLevel !== null && device.batteryLevel !== undefined ? (
+                          <div className="flex items-center gap-1 font-semibold tabular-nums text-slate-800">
+                            {device.batteryLevel < 30 ? (
+                              <BatteryWarning className="w-4 h-4 text-amber-500" />
+                            ) : (
+                              <Battery className="w-4 h-4 text-emerald-600" />
+                            )}
+                            <span>{device.batteryLevel}%</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Chưa phản hồi</span>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-slate-500">Trạng thái:</span>
-                        <span
-                          className={cn(
-                            'px-2 py-0.5 rounded-full text-[11px] font-medium border',
-                            isLocked
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                          )}
-                        >
-                          {isLocked ? 'Đã khóa' : 'Đang học'}
+                      {/* Hardware / Detection Info */}
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-500">Nhận diện:</span>
+                        <span className="font-medium text-slate-700 truncate max-w-[130px]" title={device.lastSeen}>
+                          {device.lastSeen}
                         </span>
                       </div>
                     </div>
@@ -521,6 +582,100 @@ export function TeacherClassroomView({
           )}
         </div>
       </main>
+
+      {/* Enroll Device Modal (Mã IMEI) */}
+      {showEnrollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật
+              </h3>
+              <button
+                onClick={() => setShowEnrollModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Nhập mã IMEI của máy tính bảng vật lý. Khi thiết bị được mở nguồn, ứng dụng Classroom DPC sẽ gửi tín hiệu và hệ thống tự động kết nối vào lớp học.
+            </p>
+
+            {enrollError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {enrollError}
+              </div>
+            )}
+
+            <form onSubmit={handleEnrollDevice} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Mã IMEI / Số Serial thiết bị <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={enrollImei}
+                  onChange={(e) => setEnrollImei(e.target.value)}
+                  placeholder="Ví dụ: 863456041234567"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Mã 15 chữ số in sau lưng máy hoặc bấm <code>*#06#</code> trên máy tính bảng
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên định danh / Vị trí bàn học
+                </label>
+                <input
+                  type="text"
+                  value={enrollName}
+                  onChange={(e) => setEnrollName(e.target.value)}
+                  placeholder={`Ví dụ: Máy Bàn 0${devices.length + 1}`}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Phân công Lớp học
+                </label>
+                <select
+                  value={enrollClassCode}
+                  onChange={(e) => setEnrollClassCode(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                >
+                  <option value="6A1">Lớp 6A1</option>
+                  <option value="6A2">Lớp 6A2</option>
+                  <option value="7A1">Lớp 7A1</option>
+                  <option value="8A1">Lớp 8A1</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEnrollModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEnroll}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
+                >
+                  {isSubmittingEnroll ? 'Đang lưu...' : 'Lưu & Chờ thiết bị bật nguồn'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Broadcast Message Modal */}
       {showBroadcastModal && (

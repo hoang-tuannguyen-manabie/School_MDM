@@ -41,6 +41,26 @@ export class DevicesService {
    */
   private readonly commandHistoryByDeviceId = new Map<string, DeviceCommandSummaryDto[]>();
 
+  /**
+   * Real physical devices pre-registered by IMEI / Serial number
+   */
+  private readonly preRegisteredDevices = new Map<
+    string,
+    {
+      id: string;
+      imei: string;
+      serialNumber?: string;
+      name: string;
+      classCode: string;
+      status: 'PENDING_DETECTION' | 'ONLINE' | 'OFFLINE';
+      batteryLevel?: number;
+      model?: string;
+      manufacturer?: string;
+      lastSeenAt: Date | null;
+      registeredAt: Date;
+    }
+  >();
+
   constructor(
     private readonly deviceSyncService: DeviceSyncService,
     private readonly classroomDpcAdapter: ClassroomDpcAdapter,
@@ -48,6 +68,80 @@ export class DevicesService {
     private readonly classScope: ClassScopeService,
     private readonly authRepo: AuthRepositoryPort,
   ) {}
+
+  preRegisterDevice(input: {
+    imei: string;
+    serialNumber?: string;
+    name: string;
+    classCode?: string;
+  }) {
+    const trimmedImei = (input.imei || '').trim();
+    if (!trimmedImei) {
+      throw new BadRequestException('Mã IMEI không được để trống');
+    }
+
+    // Check if IMEI already exists
+    for (const d of this.preRegisteredDevices.values()) {
+      if (d.imei === trimmedImei) {
+        return d;
+      }
+    }
+
+    const id = `reg-${randomUUID().slice(0, 8)}`;
+    const record = {
+      id,
+      imei: trimmedImei,
+      serialNumber: (input.serialNumber || '').trim() || trimmedImei,
+      name: (input.name || '').trim() || `Máy Bàn ${this.preRegisteredDevices.size + 1}`,
+      classCode: input.classCode || '6A1',
+      status: 'PENDING_DETECTION' as const,
+      batteryLevel: undefined,
+      model: undefined,
+      manufacturer: undefined,
+      lastSeenAt: null,
+      registeredAt: new Date(),
+    };
+
+    this.preRegisteredDevices.set(id, record);
+    return record;
+  }
+
+  deletePreRegisteredDevice(id: string) {
+    this.preRegisteredDevices.delete(id);
+    return { success: true };
+  }
+
+  getClassroomDevices(classCode?: string) {
+    const now = new Date();
+    let list = Array.from(this.preRegisteredDevices.values());
+    if (classCode) {
+      list = list.filter((d) => d.classCode === classCode);
+    }
+
+    return list.map((d) => {
+      let computedStatus = d.status;
+      if (d.lastSeenAt) {
+        const elapsed = now.getTime() - d.lastSeenAt.getTime();
+        // If device communicated within 60s, it's ONLINE; otherwise OFFLINE
+        computedStatus = elapsed <= 60000 ? 'ONLINE' : 'OFFLINE';
+      }
+      return {
+        id: d.id,
+        imei: d.imei,
+        serialNumber: d.serialNumber,
+        name: d.name,
+        classCode: d.classCode,
+        status: computedStatus,
+        batteryLevel: d.batteryLevel ?? null,
+        model: d.model ?? 'Đang nhận diện...',
+        manufacturer: d.manufacturer ?? 'Android Tablet',
+        lastSeenAt: d.lastSeenAt ? d.lastSeenAt.toISOString() : null,
+        lastSeen: d.lastSeenAt
+          ? d.lastSeenAt.toLocaleTimeString('vi-VN')
+          : 'Chờ thiết bị bật nguồn',
+      };
+    });
+  }
 
   async processAgentHeartbeat(
     rawInput: AgentHeartbeatInput,
@@ -58,6 +152,25 @@ export class DevicesService {
       throw new BadRequestException(
         parsed.error.issues[0]?.message ?? 'Dữ liệu heartbeat từ thiết bị không hợp lệ',
       );
+    }
+
+    // Match against real physical devices pre-registered by IMEI or serialNumber
+    const matchedImei = (parsed.data.imei || '').trim();
+    const matchedSerial = (parsed.data.serialNumber || '').trim();
+    for (const [key, preReg] of this.preRegisteredDevices.entries()) {
+      if (
+        (matchedImei && preReg.imei === matchedImei) ||
+        (matchedSerial && preReg.serialNumber === matchedSerial)
+      ) {
+        this.preRegisteredDevices.set(key, {
+          ...preReg,
+          status: 'ONLINE',
+          batteryLevel: parsed.data.batteryLevel,
+          model: parsed.data.model,
+          manufacturer: parsed.data.manufacturer,
+          lastSeenAt: heartbeatAt,
+        });
+      }
     }
 
     this.classroomDpcAdapter.registerDeviceHeartbeat({
