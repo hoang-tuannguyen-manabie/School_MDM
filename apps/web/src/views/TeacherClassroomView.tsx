@@ -17,9 +17,7 @@ import {
   CheckSquare,
   MinusCircle,
   Radio,
-  Info,
   Layers,
-  ArrowRight,
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
@@ -513,31 +511,6 @@ export function TeacherClassroomView({
                   <Layers className="w-4 h-4" />
                   <span>Chọn máy tính bảng vào lớp</span>
                 </button>
-              </div>
-
-              <div className="w-full max-w-lg mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <Info className="w-4 h-4 text-indigo-600" />
-                  <span>Quy trình quản lý thiết bị:</span>
-                </div>
-                <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside leading-relaxed">
-                  <li>
-                    <strong>Quản trị viên:</strong> Chịu trách nhiệm đăng ký mã IMEI và thông số phần cứng của máy tính bảng vào hệ thống.
-                  </li>
-                  <li>
-                    <strong>Giáo viên:</strong> Chỉ cần chọn từ các máy đã có sẵn để đưa vào tiết học và điều khiển tập trung.
-                  </li>
-                  <li>
-                    Nếu trường chưa nhập mã IMEI cho máy mới, thầy/cô có thể chuyển sang{' '}
-                    <button
-                      onClick={onOpenAdminLogin}
-                      className="text-indigo-600 font-bold hover:underline inline-flex items-center gap-0.5"
-                    >
-                      Cổng Quản trị viên <ArrowRight className="w-3 h-3" />
-                    </button>{' '}
-                    để đăng ký.
-                  </li>
-                </ul>
               </div>
             </div>
           ) : (
