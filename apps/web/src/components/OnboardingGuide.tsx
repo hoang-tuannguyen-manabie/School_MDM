@@ -11,6 +11,7 @@ import {
   PlayCircle,
   Sparkles,
   ExternalLink,
+  X,
 } from 'lucide-react';
 import { MDM_PROVIDER_TYPES, ROLES, type MdmProviderType, type RoleName } from '@school-mdm/contracts';
 
@@ -86,9 +87,10 @@ export function OnboardingGuide({
           </div>
           <button
             onClick={onClose}
-            className="text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition"
+            aria-label="Đóng"
+            className="p-2 text-indigo-200 hover:text-white rounded-xl hover:bg-white/10 transition"
           >
-            Đóng
+            <X className="w-5 h-5" />
           </button>
         </div>
 
