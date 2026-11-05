@@ -23,6 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
+import { API_BASE_URL } from '../config/api';
 
 export interface ClassroomDeviceRecord {
   id: string;
@@ -76,7 +77,7 @@ export function TeacherClassroomView({
   const fetchClassroomDevices = useCallback(async () => {
     try {
       const res = await fetch(
-        `http://localhost:4000/api/v1/devices/classroom-status?classCode=${selectedClass}`,
+        `${API_BASE_URL}/devices/classroom-status?classCode=${selectedClass}`,
       );
       if (res.ok) {
         const json = await res.json();
@@ -100,7 +101,7 @@ export function TeacherClassroomView({
     setIsLoadingSchoolDevices(true);
     setShowDeviceSelectorModal(true);
     try {
-      const res = await fetch('http://localhost:4000/api/v1/devices/classroom-status');
+      const res = await fetch(`${API_BASE_URL}/devices/classroom-status`);
       if (res.ok) {
         const json = await res.json();
         const list: ClassroomDeviceRecord[] = json.data || [];
@@ -154,7 +155,7 @@ export function TeacherClassroomView({
       const toUnassign = previouslyAssigned.filter((id) => !selectedDeviceIds.has(id));
 
       if (toAssign.length > 0) {
-        await fetch('http://localhost:4000/api/v1/devices/batch-assign', {
+        await fetch(`${API_BASE_URL}/devices/batch-assign`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -165,7 +166,7 @@ export function TeacherClassroomView({
       }
 
       if (toUnassign.length > 0) {
-        await fetch('http://localhost:4000/api/v1/devices/batch-assign', {
+        await fetch(`${API_BASE_URL}/devices/batch-assign`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -188,7 +189,7 @@ export function TeacherClassroomView({
   // Remove a single tablet from this classroom (returns to general pool)
   const handleRemoveDeviceFromClass = async (id: string, name: string) => {
     try {
-      const res = await fetch('http://localhost:4000/api/v1/devices/batch-assign', {
+      const res = await fetch(`${API_BASE_URL}/devices/batch-assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

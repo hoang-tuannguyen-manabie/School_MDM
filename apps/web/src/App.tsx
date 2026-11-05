@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
+import { API_BASE_URL } from './config/api';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,7 +128,7 @@ function OverviewView({
     let isMounted = true;
     const loadDevices = async () => {
       try {
-        const res = await fetch('http://localhost:4000/api/v1/devices/classroom-status');
+        const res = await fetch(`${API_BASE_URL}/devices/classroom-status`);
         if (res.ok) {
           const json = await res.json();
           if (isMounted && json.data) {
@@ -358,8 +359,8 @@ function DevicesAndSessionControlView({
     try {
       const url =
         selectedClassFilter && selectedClassFilter !== 'ALL'
-          ? `http://localhost:4000/api/v1/devices/classroom-status?classCode=${selectedClassFilter}`
-          : 'http://localhost:4000/api/v1/devices/classroom-status';
+          ? `${API_BASE_URL}/devices/classroom-status?classCode=${selectedClassFilter}`
+          : `${API_BASE_URL}/devices/classroom-status`;
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
@@ -391,7 +392,7 @@ function DevicesAndSessionControlView({
     setEnrollError(null);
 
     try {
-      const res = await fetch('http://localhost:4000/api/v1/devices/pre-register', {
+      const res = await fetch(`${API_BASE_URL}/devices/pre-register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -422,7 +423,7 @@ function DevicesAndSessionControlView({
   const handleDeleteDevice = async (id: string, name: string) => {
     if (!window.confirm(`Xác nhận xóa máy "${name}" khỏi hệ thống?`)) return;
     try {
-      const res = await fetch(`http://localhost:4000/api/v1/devices/pre-register/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/devices/pre-register/${id}`, {
         method: 'DELETE',
       });
       if (res.ok) {
