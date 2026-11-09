@@ -180,6 +180,7 @@ export type DeviceListFilterInput = z.infer<typeof deviceListFilterSchema>;
 
 export const agentHeartbeatSchema = z.object({
   externalDeviceId: z.string().trim().min(2).max(255),
+  androidId: z.string().trim().max(128).optional(),
   serialNumber: z.string().trim().max(128).optional(),
   imei: z.string().trim().max(64).optional(),
   manufacturer: z.string().trim().min(1).max(120),

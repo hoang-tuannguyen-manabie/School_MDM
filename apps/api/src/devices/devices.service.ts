@@ -42,13 +42,14 @@ export class DevicesService {
   private readonly commandHistoryByDeviceId = new Map<string, DeviceCommandSummaryDto[]>();
 
   /**
-   * Real physical devices pre-registered by IMEI / Serial number
+   * Real physical devices pre-registered by Android ID / Serial / IMEI
    */
   private readonly preRegisteredDevices = new Map<
     string,
     {
       id: string;
-      imei: string;
+      androidId?: string;
+      imei?: string;
       serialNumber?: string;
       name: string;
       classCode: string;
@@ -70,24 +71,35 @@ export class DevicesService {
   ) {}
 
   preRegisterDevice(input: {
+    androidId?: string;
     imei?: string;
     serialNumber?: string;
     name: string;
     classCode?: string;
   }) {
-    const rawIdentifier = (input.serialNumber || input.imei || '').trim();
+    const rawIdentifier = (input.androidId || input.serialNumber || input.imei || '').trim();
     if (!rawIdentifier) {
-      throw new BadRequestException('Vui lòng nhập Số Serial hoặc Mã IMEI của thiết bị');
+      throw new BadRequestException(
+        'Vui lòng nhập Mã định danh, Địa chỉ MAC Wi-Fi hoặc Số Serial của máy',
+      );
     }
 
-    const trimmedSerial = (input.serialNumber || '').trim() || rawIdentifier;
-    const trimmedImei = (input.imei || '').trim() || rawIdentifier;
+    const trimmedAndroidId = (input.androidId || '').trim();
+    const trimmedSerial = (input.serialNumber || '').trim();
+    const trimmedImei = (input.imei || '').trim();
+    const primaryId = trimmedAndroidId || trimmedSerial || trimmedImei || rawIdentifier;
+    const cleanPrimary = primaryId.toLowerCase().replace(/[:-]/g, '');
 
-    // Check if device with this Serial / IMEI already exists
+    // Check if device with this Android ID / Serial / MAC already exists
     for (const d of this.preRegisteredDevices.values()) {
+      const dAndroid = (d.androidId || '').toLowerCase().replace(/[:-]/g, '');
+      const dSerial = (d.serialNumber || '').toLowerCase().replace(/[:-]/g, '');
+      const dImei = (d.imei || '').toLowerCase().replace(/[:-]/g, '');
+
       if (
-        (d.serialNumber && d.serialNumber.toLowerCase() === trimmedSerial.toLowerCase()) ||
-        (d.imei && d.imei.toLowerCase() === trimmedImei.toLowerCase())
+        (dAndroid && dAndroid === cleanPrimary) ||
+        (dSerial && dSerial === cleanPrimary) ||
+        (dImei && dImei === cleanPrimary)
       ) {
         return d;
       }
@@ -96,10 +108,11 @@ export class DevicesService {
     const id = `reg-${randomUUID().slice(0, 8)}`;
     const record = {
       id,
-      imei: trimmedImei,
-      serialNumber: trimmedSerial,
+      androidId: trimmedAndroidId || primaryId,
+      imei: trimmedImei || undefined,
+      serialNumber: trimmedSerial || primaryId,
       name: (input.name || '').trim() || `Máy Bàn ${this.preRegisteredDevices.size + 1}`,
-      classCode: input.classCode || '6A1',
+      classCode: input.classCode || 'KHO',
       status: 'PENDING_DETECTION' as const,
       batteryLevel: undefined,
       model: undefined,
@@ -149,6 +162,7 @@ export class DevicesService {
       }
       return {
         id: d.id,
+        androidId: d.androidId || d.serialNumber || d.imei,
         imei: d.imei,
         serialNumber: d.serialNumber,
         name: d.name,
@@ -176,21 +190,32 @@ export class DevicesService {
       );
     }
 
-    // Match against real physical devices pre-registered by Serial Number, IMEI or externalDeviceId
-    const matchedImei = (parsed.data.imei || '').trim().toLowerCase();
-    const matchedSerial = (parsed.data.serialNumber || '').trim().toLowerCase();
+    // Match against real physical devices pre-registered by Android ID, Serial Number, IMEI, MAC or externalDeviceId
     const matchedExtId = (parsed.data.externalDeviceId || '').trim().toLowerCase();
+    const matchedAndroidId = (parsed.data.androidId || '').trim().toLowerCase();
+    const matchedSerial = (parsed.data.serialNumber || '').trim().toLowerCase();
+    const matchedImei = (parsed.data.imei || '').trim().toLowerCase();
 
+    const clean = (val?: string) => (val || '').toLowerCase().replace(/[:-]/g, '');
+    const cleanExtId = clean(matchedExtId);
+    const cleanAndroidId = clean(matchedAndroidId);
+    const cleanSerial = clean(matchedSerial);
+    const cleanImei = clean(matchedImei);
+
+    let matchedAny = false;
     for (const [key, preReg] of this.preRegisteredDevices.entries()) {
-      const regSerial = (preReg.serialNumber || '').toLowerCase();
-      const regImei = (preReg.imei || '').toLowerCase();
+      const regAndroidId = clean(preReg.androidId);
+      const regSerial = clean(preReg.serialNumber);
+      const regImei = clean(preReg.imei);
 
       const isMatch =
-        (matchedSerial && (regSerial === matchedSerial || regImei === matchedSerial)) ||
-        (matchedImei && (regImei === matchedImei || regSerial === matchedImei)) ||
-        (matchedExtId && (regSerial === matchedExtId || regImei === matchedExtId));
+        (cleanExtId && (regAndroidId === cleanExtId || regSerial === cleanExtId || regImei === cleanExtId)) ||
+        (cleanAndroidId && (regAndroidId === cleanAndroidId || regSerial === cleanAndroidId || regImei === cleanAndroidId)) ||
+        (cleanSerial && (regSerial === cleanSerial || regAndroidId === cleanSerial || regImei === cleanSerial)) ||
+        (cleanImei && (regImei === cleanImei || regAndroidId === cleanImei || regSerial === cleanImei));
 
       if (isMatch) {
+        matchedAny = true;
         this.preRegisteredDevices.set(key, {
           ...preReg,
           status: 'ONLINE',
@@ -202,8 +227,32 @@ export class DevicesService {
       }
     }
 
+    // Auto-discovery: If device is not pre-registered (e.g. user cannot find Serial Number),
+    // automatically enroll it into KHO so it appears online in the portal immediately!
+    if (!matchedAny) {
+      const autoId = `reg-${randomUUID().slice(0, 8)}`;
+      const cleanShortId = (parsed.data.serialNumber || parsed.data.androidId || parsed.data.externalDeviceId || 'P30').slice(-6).toUpperCase();
+      const fallbackName = `Máy ${parsed.data.model || 'Teclast P30'} (${cleanShortId})`;
+
+      this.preRegisteredDevices.set(autoId, {
+        id: autoId,
+        androidId: parsed.data.androidId || parsed.data.externalDeviceId,
+        imei: parsed.data.imei,
+        serialNumber: parsed.data.serialNumber || parsed.data.externalDeviceId,
+        name: fallbackName,
+        classCode: 'KHO',
+        status: 'ONLINE',
+        batteryLevel: parsed.data.batteryLevel,
+        model: parsed.data.model,
+        manufacturer: parsed.data.manufacturer,
+        lastSeenAt: heartbeatAt,
+        registeredAt: heartbeatAt,
+      });
+    }
+
     this.classroomDpcAdapter.registerDeviceHeartbeat({
       externalDeviceId: parsed.data.externalDeviceId,
+      androidId: parsed.data.androidId,
       serialNumber: parsed.data.serialNumber,
       imei: parsed.data.imei,
       manufacturer: parsed.data.manufacturer,

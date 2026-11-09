@@ -84,6 +84,7 @@ export interface MdmCapabilityMatrix {
 
 export interface MdmExternalDevice {
   externalDeviceId: string;
+  androidId?: string;
   serialNumber?: string;
   imei?: string;
   manufacturer: string;
@@ -269,6 +270,7 @@ export interface DeviceCommandSummaryDto {
 export interface DeviceSummaryDto {
   id: string;
   assetTag: string;
+  androidId?: string | null;
   serialNumber: string | null;
   imei: string | null;
   displayName: string;

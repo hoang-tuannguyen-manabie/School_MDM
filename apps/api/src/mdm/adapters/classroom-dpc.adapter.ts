@@ -20,6 +20,7 @@ import {
 
 export interface EnrolledClassroomDeviceRecord {
   externalDeviceId: string;
+  androidId?: string;
   serialNumber?: string;
   imei?: string;
   manufacturer: string;
@@ -264,6 +265,7 @@ export class ClassroomDpcAdapter implements MdmAdapter {
   private toExternalDevice(d: EnrolledClassroomDeviceRecord, now: Date): MdmExternalDevice {
     return {
       externalDeviceId: d.externalDeviceId,
+      androidId: d.androidId,
       serialNumber: d.serialNumber,
       imei: d.imei,
       manufacturer: d.manufacturer,

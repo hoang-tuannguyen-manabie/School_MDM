@@ -63,6 +63,7 @@ export class DevicesController {
   async preRegisterDevice(
     @Body()
     body: {
+      androidId?: string;
       imei?: string;
       serialNumber?: string;
       name: string;

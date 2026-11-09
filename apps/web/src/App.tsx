@@ -102,7 +102,8 @@ function getProviderCapabilities(provider: MdmProviderType): CapabilityInfo {
 
 interface RealDeviceItem {
   id: string;
-  imei: string;
+  androidId?: string;
+  imei?: string;
   serialNumber?: string;
   name: string;
   classCode: string;
@@ -159,7 +160,7 @@ function OverviewView({
         <div className="space-y-1.5">
           <h3 className="text-xl font-bold tracking-tight text-white">5 bước đưa máy tính bảng vào giảng dạy</h3>
           <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-            Kết nối máy tính bảng học sinh bằng Số Serial (máy Wi-Fi như Teclast P30) hoặc mã IMEI. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
+            Kết nối máy tính bảng học sinh bằng ID Thiết bị Android (Android ID), Số Serial hoặc mã IMEI. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
           </p>
         </div>
 
@@ -175,7 +176,7 @@ function OverviewView({
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-indigo-400" />
-            <span>Đăng ký máy thật (S/N / IMEI)</span>
+            <span>Đăng ký máy thật (Android ID / S/N)</span>
           </button>
         </div>
       </div>
@@ -258,11 +259,11 @@ function OverviewView({
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Đăng ký Thiết bị Thật (S/N / IMEI)</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Đăng ký Thiết bị Thật (Android ID / S/N)</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Đăng ký Số Serial (đối với máy tính bảng Wi-Fi như Teclast P30) hoặc IMEI để hệ thống tự động nhận diện khi máy khởi động.
+              Đăng ký bằng ID Thiết bị Android (Android ID) hoặc Số Serial / IMEI để hệ thống tự động nhận diện khi máy khởi động.
             </p>
           </div>
 
@@ -382,9 +383,9 @@ function DevicesAndSessionControlView({
   // Handle register physical device
   const handleEnrollDevice = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanImei = enrollImei.trim();
-    if (!cleanImei) {
-      setEnrollError('Vui lòng nhập mã IMEI hoặc Số Serial');
+    const cleanIdentifier = enrollImei.trim();
+    if (!cleanIdentifier) {
+      setEnrollError('Vui lòng nhập ID Thiết bị Android (Android ID), Số Serial hoặc mã IMEI');
       return;
     }
 
@@ -396,8 +397,9 @@ function DevicesAndSessionControlView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imei: cleanImei,
-          serialNumber: cleanImei,
+          androidId: cleanIdentifier,
+          serialNumber: cleanIdentifier,
+          imei: cleanIdentifier,
           name: enrollName.trim() || `Máy Bàn ${devices.length + 1}`,
           classCode: enrollClassCode || '6A1',
         }),
@@ -451,7 +453,7 @@ function DevicesAndSessionControlView({
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">
-            Dành cho Quản trị viên: Đăng ký thiết bị thật qua Số Serial / IMEI (hỗ trợ máy Wi-Fi như Teclast P30), phân phối vào kho hoặc các lớp học.
+            Dành cho Quản trị viên: Đăng ký thiết bị thật qua ID Thiết bị Android (Android ID), Số Serial hoặc IMEI, phân phối vào kho hoặc các lớp học.
           </p>
         </div>
 
@@ -482,7 +484,7 @@ function DevicesAndSessionControlView({
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Đăng ký máy thật (S/N / IMEI)</span>
+            <span>Đăng ký máy thật (Android ID / S/N)</span>
           </button>
 
           <button
@@ -597,7 +599,7 @@ function DevicesAndSessionControlView({
           <thead>
             <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
               <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
-              <th className="py-3 px-4 font-semibold">Số Serial / IMEI</th>
+              <th className="py-3 px-4 font-semibold">Mã định danh (Android ID / S/N)</th>
               <th className="py-3 px-4 font-semibold">Lớp học</th>
               <th className="py-3 px-4 font-semibold">Trạng thái</th>
               <th className="py-3 px-4 font-semibold">Phần cứng</th>
@@ -617,7 +619,7 @@ function DevicesAndSessionControlView({
                         Chưa có thiết bị nào trong hệ thống
                       </p>
                       <p className="text-xs text-slate-500 max-w-md mt-0.5">
-                        Bấm nút "Đăng ký máy thật (S/N / IMEI)" bên trên để thêm số Serial hoặc IMEI. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
+                        Bấm nút "Đăng ký máy thật (Android ID / S/N)" bên trên để thêm Android ID hoặc số Serial. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
                       </p>
                     </div>
                   </div>
@@ -631,8 +633,8 @@ function DevicesAndSessionControlView({
                 return (
                   <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">
-                      {d.serialNumber || d.imei}
+                    <td className="py-3 px-4 font-mono text-xs text-slate-700 font-semibold tabular-nums">
+                      {d.androidId || d.serialNumber || d.imei}
                     </td>
                     <td className="py-3 px-4 font-medium text-xs text-slate-700">
                       {d.classCode === 'KHO' ? (
@@ -701,7 +703,7 @@ function DevicesAndSessionControlView({
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật (Quản trị viên)
+                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật (Android ID / S/N)
               </h3>
               <button
                 onClick={() => setShowEnrollModal(false)}
@@ -712,7 +714,7 @@ function DevicesAndSessionControlView({
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Dành riêng cho Quản trị viên: Nhập Số Serial (đối với máy tính bảng Wi-Fi không SIM như Teclast P30) hoặc mã IMEI để thêm thiết bị vào hệ thống trường học. Sau khi đăng ký, máy tính bảng sẽ sẵn sàng để Giáo viên chọn vào tiết học tại lớp.
+              Dành riêng cho Quản trị viên: Đối với dòng máy không có IMEI hoặc khó tra số Serial như <strong>Teclast P30</strong>, bạn có thể nhập <strong>Địa chỉ MAC Wi-Fi</strong>, <strong>Mã ID Android</strong> hoặc mã tự đặt. Ngoài ra, hệ thống hỗ trợ <strong>Tự động nhận diện qua Wi-Fi</strong> mà không cần nhập trước!
             </p>
 
             {enrollError && (
@@ -724,19 +726,26 @@ function DevicesAndSessionControlView({
             <form onSubmit={handleEnrollDevice} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Số Serial / Mã máy (hoặc IMEI nếu có SIM) <span className="text-rose-500">*</span>
+                  Địa chỉ MAC Wi-Fi, Mã ID Android hoặc Serial / Mã máy <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={enrollImei}
                   onChange={(e) => setEnrollImei(e.target.value)}
-                  placeholder="Ví dụ: P30T202409001 (hoặc số Serial sau lưng máy)"
+                  placeholder="Ví dụ: AA:BB:CC:11:22:33 (MAC Wi-Fi) hoặc P30-01"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Đối với Teclast P30 (Wi-Fi): Xem Số sê-ri in trên tem lưng máy hoặc vào Cài đặt &gt; Thông tin máy tính bảng &gt; Số sê-ri.
-                </p>
+                <div className="mt-2 p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-100 text-[11px] text-indigo-900 leading-relaxed space-y-1">
+                  <p className="font-semibold flex items-center gap-1 text-indigo-800">
+                    💡 3 Cách kết nối máy Teclast P30 đơn giản nhất:
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-600">
+                    <li><strong>Cách 1 (Khuyên dùng - Không cần gõ mã):</strong> Bật máy Teclast P30 lên và kết nối Wi-Fi, hệ thống sẽ <strong>tự động phát hiện</strong> và đưa vào Kho máy.</li>
+                    <li><strong>Cách 2 (Địa chỉ MAC Wi-Fi):</strong> Vào <em>Cài đặt &gt; Mạng &amp; Internet &gt; Wi-Fi &gt; Chạm vào Wi-Fi đang kết nối &gt; Địa chỉ MAC của thiết bị</em>.</li>
+                    <li><strong>Cách 3 (Mã tự đặt):</strong> Tự nhập mã quản lý như <code className="font-mono bg-white px-1 rounded border border-indigo-200">P30-BAN01</code>.</li>
+                  </ul>
+                </div>
               </div>
 
               <div>
