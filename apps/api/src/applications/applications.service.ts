@@ -27,6 +27,7 @@ import { ClassScopeService } from '../rbac/class-scope.service';
 @Injectable()
 export class ApplicationsService {
   private readonly appsById = new Map<string, ApplicationCatalogItemDto>();
+  private activeKioskAppId: string | null = null;
 
   constructor(
     private readonly devicesService: DevicesService,
@@ -35,7 +36,170 @@ export class ApplicationsService {
     private readonly mdmCapabilityService: MdmCapabilityService,
     private readonly classScope: ClassScopeService,
     private readonly authRepo: AuthRepositoryPort,
-  ) {}
+  ) {
+    this.seedDefaultDeviceApps();
+  }
+
+  private seedDefaultDeviceApps() {
+    const defaultApps = [
+      {
+        packageName: 'com.openai.chatgpt',
+        name: 'ChatGPT (Trợ lý AI)',
+        category: 'AI_ASSISTANT',
+        versionName: '1.2024.312',
+        versionCode: 31200,
+        isApproved: true,
+        description: 'Trợ lý AI hỗ trợ giải đáp bài tập, viết văn và nghiên cứu học tập',
+      },
+      {
+        packageName: 'com.canva.editor',
+        name: 'Canva (Thiết kế đồ họa)',
+        category: 'DESIGN_EDUCATION',
+        versionName: '2.285.0',
+        versionCode: 28500,
+        isApproved: true,
+        description: 'Công cụ vẽ sơ đồ tư duy, làm slide thuyết trình và bài tập nhóm',
+      },
+      {
+        packageName: 'com.android.chrome',
+        name: 'Google Chrome',
+        category: 'BROWSER',
+        versionName: '128.0.6613.88',
+        versionCode: 6613088,
+        isApproved: true,
+        description: 'Trình duyệt tra cứu tài liệu học tập và vào các trang web giáo dục',
+      },
+      {
+        packageName: 'com.google.android.calculator',
+        name: 'Máy tính học sinh (Calculator)',
+        category: 'TOOLS',
+        versionName: '8.6',
+        versionCode: 86000,
+        isApproved: true,
+        description: 'Công cụ tính toán số học, lượng giác và giải toán khoa học',
+      },
+      {
+        packageName: 'com.google.android.apps.nbu.files',
+        name: 'Quản lý Học liệu (Files)',
+        category: 'TOOLS',
+        versionName: '1.4373',
+        versionCode: 4373,
+        isApproved: true,
+        description: 'Mở bài tập PDF, tài liệu và video bài giảng do giáo viên gửi',
+      },
+      {
+        packageName: 'com.android.camera2',
+        name: 'Máy ảnh (Camera)',
+        category: 'MEDIA',
+        versionName: '2.0.002',
+        versionCode: 2002,
+        isApproved: false,
+        description: 'Chụp ảnh tư liệu bài tập - Mặc định khóa trong giờ học lý thuyết',
+      },
+      {
+        packageName: 'com.google.android.youtube',
+        name: 'YouTube',
+        category: 'MEDIA',
+        versionName: '19.34.42',
+        versionCode: 193442,
+        isApproved: false,
+        description: 'Ứng dụng video giải trí - Mặc định bị khóa để học sinh không xao nhãng',
+      },
+      {
+        packageName: 'com.android.settings',
+        name: 'Cài đặt hệ thống (Settings)',
+        category: 'SYSTEM',
+        versionName: '14.0',
+        versionCode: 1400,
+        isApproved: false,
+        description: 'Cài đặt hệ điều hành Android - Luôn khóa đối với học sinh',
+      },
+    ];
+
+    const now = new Date().toISOString();
+    for (const app of defaultApps) {
+      const id = randomUUID();
+      this.appsById.set(id, {
+        id,
+        packageName: app.packageName,
+        name: app.name,
+        category: app.category,
+        versionName: app.versionName,
+        versionCode: app.versionCode,
+        apkUrl: null,
+        isApproved: app.isApproved,
+        isMandatory: false,
+        description: app.description,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  toggleAppApproval(appId: string): ApplicationCatalogItemDto {
+    const app = this.appsById.get(appId);
+    if (!app) {
+      throw new NotFoundException('Không tìm thấy ứng dụng trong danh mục');
+    }
+    app.isApproved = !app.isApproved;
+    app.updatedAt = new Date().toISOString();
+    return { ...app };
+  }
+
+  setActiveKioskApp(appId: string | null): { activeKioskApp: ApplicationCatalogItemDto | null } {
+    if (!appId) {
+      this.activeKioskAppId = null;
+      return { activeKioskApp: null };
+    }
+    const app = this.appsById.get(appId);
+    if (!app) {
+      throw new NotFoundException('Không tìm thấy ứng dụng để ghim');
+    }
+    this.activeKioskAppId = appId;
+    return { activeKioskApp: { ...app } };
+  }
+
+  getActiveKioskApp(): ApplicationCatalogItemDto | null {
+    if (!this.activeKioskAppId) return null;
+    return this.appsById.get(this.activeKioskAppId) ?? null;
+  }
+
+  addCustomApp(input: {
+    packageName: string;
+    name: string;
+    category?: string;
+    description?: string;
+  }): ApplicationCatalogItemDto {
+    const trimmedPkg = (input.packageName || '').trim();
+    if (!trimmedPkg) {
+      throw new BadRequestException('Mã gói ứng dụng (Package Name) không được để trống');
+    }
+
+    for (const existing of this.appsById.values()) {
+      if (existing.packageName.toLowerCase() === trimmedPkg.toLowerCase()) {
+        return existing;
+      }
+    }
+
+    const id = randomUUID();
+    const nowIso = new Date().toISOString();
+    const app: ApplicationCatalogItemDto = {
+      id,
+      packageName: trimmedPkg,
+      name: (input.name || '').trim() || trimmedPkg,
+      category: input.category || 'EDUCATION',
+      versionName: '1.0.0',
+      versionCode: 1,
+      apkUrl: null,
+      isApproved: true,
+      isMandatory: false,
+      description: input.description || 'Ứng dụng cài đặt trên máy tính bảng',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    this.appsById.set(id, app);
+    return app;
+  }
 
   async createApplication(
     actor: AuthenticatedUser,

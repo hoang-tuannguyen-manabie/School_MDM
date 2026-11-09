@@ -27,7 +27,6 @@ import { RolesGuard } from '../rbac/roles.guard';
 import { ApplicationsService } from './applications.service';
 
 @Controller('applications')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class ApplicationsController {
   constructor(private readonly applicationsService: ApplicationsService) {}
 
@@ -36,7 +35,42 @@ export class ApplicationsController {
     return this.wrap(this.applicationsService.listApplications());
   }
 
+  @Get('kiosk')
+  getActiveKiosk(): ApiResponse<{ activeKioskApp: ApplicationCatalogItemDto | null }> {
+    return this.wrap({ activeKioskApp: this.applicationsService.getActiveKioskApp() });
+  }
+
+  @Post('kiosk')
+  @HttpCode(HttpStatus.OK)
+  setActiveKiosk(
+    @Body() body: { appId: string | null },
+  ): ApiResponse<{ activeKioskApp: ApplicationCatalogItemDto | null }> {
+    return this.wrap(this.applicationsService.setActiveKioskApp(body.appId ?? null));
+  }
+
+  @Patch(':id/toggle-approval')
+  toggleApproval(
+    @Param('id') appId: string,
+  ): ApiResponse<ApplicationCatalogItemDto> {
+    return this.wrap(this.applicationsService.toggleAppApproval(appId));
+  }
+
+  @Post('custom')
+  @HttpCode(HttpStatus.OK)
+  addCustomApp(
+    @Body()
+    body: {
+      packageName: string;
+      name: string;
+      category?: string;
+      description?: string;
+    },
+  ): ApiResponse<ApplicationCatalogItemDto> {
+    return this.wrap(this.applicationsService.addCustomApp(body));
+  }
+
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(ROLES.ADMIN)
   async createApplication(
     @Body() body: CreateApplicationInput,
@@ -48,6 +82,7 @@ export class ApplicationsController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async getApplicationDetail(
     @Param('id') appId: string,
     @Req() req: AuthenticatedRequest,
@@ -58,6 +93,7 @@ export class ApplicationsController {
   }
 
   @Patch(':id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(ROLES.ADMIN)
   async approveApplication(
     @Param('id') appId: string,

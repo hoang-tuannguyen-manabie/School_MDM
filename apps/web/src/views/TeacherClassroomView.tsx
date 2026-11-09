@@ -19,9 +19,23 @@ import {
   Radio,
   Layers,
   RefreshCw,
+  EyeOff,
+  Smartphone,
+  Check,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
+
+export interface ClassroomAppItem {
+  id: string;
+  packageName: string;
+  name: string;
+  category: string;
+  versionName?: string;
+  versionCode?: number;
+  isApproved: boolean;
+  description: string | null;
+}
 
 export interface ClassroomDeviceRecord {
   id: string;
@@ -52,7 +66,8 @@ export function TeacherClassroomView({
   const [selectedClass, setSelectedClass] = useState('6A1');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [devices, setDevices] = useState<ClassroomDeviceRecord[]>([]);
-  const [activeKioskApp, setActiveKioskApp] = useState<string>('Chưa kích hoạt');
+  const [apps, setApps] = useState<ClassroomAppItem[]>([]);
+  const [activeKioskApp, setActiveKioskApp] = useState<ClassroomAppItem | null>(null);
   const [isAllLocked, setIsAllLocked] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [broadcastMessage, setBroadcastMessage] = useState('');
@@ -94,6 +109,34 @@ export function TeacherClassroomView({
     const timer = setInterval(fetchClassroomDevices, 3000);
     return () => clearInterval(timer);
   }, [fetchClassroomDevices]);
+
+  // Poll applications and kiosk status from server
+  const fetchClassroomApps = useCallback(async () => {
+    try {
+      const [appsRes, kioskRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/applications`),
+        fetch(`${API_BASE_URL}/applications/kiosk`),
+      ]);
+      if (appsRes.ok) {
+        const json = await appsRes.json();
+        if (json.data && Array.isArray(json.data)) {
+          setApps(json.data);
+        }
+      }
+      if (kioskRes.ok) {
+        const json = await kioskRes.json();
+        setActiveKioskApp(json.data?.activeKioskApp ?? null);
+      }
+    } catch {
+      // Backend temporarily unreachable
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClassroomApps();
+    const timer = setInterval(fetchClassroomApps, 4000);
+    return () => clearInterval(timer);
+  }, [fetchClassroomApps]);
 
   // Open the tablet selector modal: load all school tablets and pre-check those already in this class
   const handleOpenDeviceSelector = async () => {
@@ -217,11 +260,28 @@ export function TeacherClassroomView({
     showToast('Đã mở khóa toàn bộ máy tính bảng. Học sinh có thể làm bài tiếp tục.');
   };
 
-  // Apply Kiosk mode for specific educational app
-  const handleApplyKiosk = (appName: string) => {
-    setActiveKioskApp(appName);
-    setIsAllLocked(false);
-    showToast(`Đã gửi lệnh ghim ứng dụng [${appName}] lên màn hình tất cả máy tính bảng.`);
+  // Apply or remove Kiosk mode for specific educational app
+  const handleApplyKiosk = async (targetApp: ClassroomAppItem | null) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/applications/kiosk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appId: targetApp ? targetApp.id : null }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const updated = (json.data?.activeKioskApp as ClassroomAppItem) ?? null;
+        setActiveKioskApp(updated);
+        setIsAllLocked(false);
+        if (targetApp) {
+          showToast(`Đã gửi lệnh ghim ứng dụng [${targetApp.name}] lên màn hình tất cả máy tính bảng.`);
+        } else {
+          showToast('Đã bỏ ghim ứng dụng. Toàn bộ ứng dụng được cấp phép đã sẵn sàng sử dụng.');
+        }
+      }
+    } catch {
+      showToast('Lỗi khi gửi lệnh ghim ứng dụng.');
+    }
   };
 
   const handleSendBroadcast = (e: React.FormEvent) => {
@@ -234,6 +294,8 @@ export function TeacherClassroomView({
 
   const onlineDevices = devices.filter((d) => d.status === 'ONLINE');
   const pendingDevices = devices.filter((d) => d.status === 'PENDING_DETECTION');
+  const approvedApps = apps.filter((a) => a.isApproved);
+  const blockedApps = apps.filter((a) => !a.isApproved);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -402,23 +464,29 @@ export function TeacherClassroomView({
                 </div>
               </button>
 
-              {/* Kiosk Manabie */}
-              <button
-                onClick={() => handleApplyKiosk('Manabie Learner')}
-                className={cn(
-                  'p-3.5 rounded-xl border text-left transition flex items-center justify-between group shadow-xs',
-                  activeKioskApp === 'Manabie Learner' && !isAllLocked
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-900'
-                    : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30',
-                )}
-              >
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-700">
-                    <Pin className="w-4 h-4" /> Ghim Manabie Learner
+              {/* Quick Kiosk Toggle / Status */}
+              {activeKioskApp ? (
+                <button
+                  onClick={() => handleApplyKiosk(null)}
+                  className="p-3.5 rounded-xl border border-indigo-300 bg-indigo-50/80 hover:bg-indigo-100 text-left transition flex items-center justify-between group shadow-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-800">
+                      <Pin className="w-4 h-4 text-indigo-600" /> Bỏ ghim [{activeKioskApp.name}]
+                    </div>
+                    <p className="text-[11px] text-slate-600">Bấm để cho phép dùng các app khác</p>
                   </div>
-                  <p className="text-[11px] text-slate-500">Chỉ mở ứng dụng học trực tuyến</p>
+                </button>
+              ) : (
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-left flex items-center justify-between shadow-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-700">
+                      <Layers className="w-4 h-4 text-emerald-600" /> Không ghim (Mở tự do)
+                    </div>
+                    <p className="text-[11px] text-slate-500">Học sinh dùng các app được duyệt</p>
+                  </div>
                 </div>
-              </button>
+              )}
 
               {/* Broadcast message */}
               <button
@@ -433,6 +501,100 @@ export function TeacherClassroomView({
                 </div>
               </button>
             </div>
+          </div>
+
+          {/* Educational Applications & Kiosk Selector */}
+          <div className="space-y-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                    <Smartphone className="w-4 h-4" />
+                  </span>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                    Ứng dụng trên Tablet & Chọn ứng dụng Ghim (Kiosk)
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Học sinh <strong>không cần thao tác gì</strong> trên máy tính bảng. Thầy/Cô chỉ cần bấm <strong>Ghim App</strong> để cố định duy nhất ứng dụng đó trong giờ học (Toán, Vẽ đồ họa, Tra cứu AI,...).
+                </p>
+              </div>
+
+              {activeKioskApp && (
+                <button
+                  onClick={() => handleApplyKiosk(null)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Hủy ghim • Mở tự do</span>
+                </button>
+              )}
+            </div>
+
+            {/* Approved Apps Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
+              {approvedApps.map((app) => {
+                const isKiosked = activeKioskApp?.id === app.id;
+                return (
+                  <div
+                    key={app.id}
+                    className={cn(
+                      'p-3.5 rounded-xl border transition flex flex-col justify-between gap-3 shadow-2xs',
+                      isKiosked
+                        ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20'
+                        : 'bg-white border-slate-200 hover:border-slate-300',
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[110px]" title={app.packageName}>
+                          {app.packageName}
+                        </span>
+                        {isKiosked ? (
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Pin className="w-2.5 h-2.5" /> Ghim
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                            <Check className="w-2.5 h-2.5" /> Cho phép
+                          </span>
+                        )}
+                      </div>
+                      <h5 className="text-xs font-bold text-slate-900 line-clamp-1">{app.name}</h5>
+                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
+                        {app.description || 'Ứng dụng phục vụ học tập'}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => handleApplyKiosk(isKiosked ? null : app)}
+                      className={cn(
+                        'w-full py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-2xs',
+                        isKiosked
+                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                          : 'bg-indigo-600 hover:bg-indigo-700 text-white',
+                      )}
+                    >
+                      <Pin className="w-3.5 h-3.5" />
+                      <span>{isKiosked ? 'Bỏ ghim' : 'Ghim App này'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Blocked Apps Notice */}
+            {blockedApps.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                <div className="flex items-center gap-1.5">
+                  <EyeOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>
+                    <strong>Khóa an toàn {blockedApps.length} ứng dụng:</strong> {blockedApps.map((a) => a.name).join(', ')} (Học sinh không thể mở để chống xao nhãng).
+                  </span>
+                </div>
+                <span className="text-slate-400 italic">Quản lý tại Cổng Quản trị viên &gt; Kho Ứng dụng</span>
+              </div>
+            )}
           </div>
 
           {/* Classroom Stat Counters */}
@@ -461,7 +623,7 @@ export function TeacherClassroomView({
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
               <span className="text-[11px] text-slate-500">Ứng dụng đang ghim</span>
               <p className="text-sm font-bold text-indigo-700 truncate mt-1">
-                {activeKioskApp}
+                {activeKioskApp ? activeKioskApp.name : 'Không ghim (Tự do)'}
               </p>
             </div>
           </div>

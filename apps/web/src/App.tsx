@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
+import { ApplicationsManagementView } from './views/ApplicationsManagementView';
 import { API_BASE_URL } from './config/api';
 
 const queryClient = new QueryClient({
@@ -1228,12 +1229,7 @@ function PortalLayout(): React.ReactElement {
             />
             <Route
               path="/applications"
-              element={
-                <ModulePlaceholderView
-                  title="Kho Ứng dụng"
-                  description="Danh mục phần mềm giáo dục được phê duyệt cài đặt trên máy tính bảng học sinh."
-                />
-              }
+              element={<ApplicationsManagementView />}
             />
             <Route
               path="/policies"
