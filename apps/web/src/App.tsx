@@ -45,6 +45,7 @@ import {
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
 import { ApplicationsManagementView } from './views/ApplicationsManagementView';
+import { HardwareControlBanner } from './components/HardwareControlModal';
 import { API_BASE_URL } from './config/api';
 
 const queryClient = new QueryClient({
@@ -495,18 +496,29 @@ function DevicesAndSessionControlView({
     }
   };
 
-  const handleConfirmDispatch = () => {
+  const handleConfirmDispatch = async () => {
     if (!confirmModal) return;
+    try {
+      await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked: true }),
+      });
+    } catch {
+      // ignore
+    }
     setLastCommandResult({
       actionName: confirmModal.actionName,
       status: COMMAND_STATUSES.SENT,
-      detail: 'Lệnh đã được phát đến tất cả thiết bị trong lớp học.',
+      detail: 'Lệnh Khóa màn hình phần cứng đã được phát đến toàn bộ thiết bị.',
     });
     setConfirmModal(null);
   };
 
   return (
     <div className="space-y-6">
+      <HardwareControlBanner defaultIp="192.168.1.28" />
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
+import { HardwareControlBanner } from '../components/HardwareControlModal';
 
 export interface ApplicationItem {
   id: string;
@@ -208,6 +209,9 @@ export function ApplicationsManagementView(): React.ReactElement {
           </button>
         </div>
       </div>
+
+      {/* Hardware ADB Control Status & 1-Time Pairing Banner */}
+      <HardwareControlBanner defaultIp="192.168.1.28" />
 
       {/* Kiosk Status Alert (if active) */}
       {activeKioskApp ? (

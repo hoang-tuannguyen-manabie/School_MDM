@@ -26,6 +26,7 @@ import {
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
+import { HardwareControlBanner } from '../components/HardwareControlModal';
 
 export interface ClassroomAppItem {
   id: string;
@@ -249,16 +250,34 @@ export function TeacherClassroomView({
     }
   };
 
-  // Lock entire classroom
-  const handleLockAll = () => {
+  // Lock entire classroom (real hardware sleep + watchdog lock)
+  const handleLockAll = async () => {
     setIsAllLocked(true);
-    showToast('Đã phát lệnh KHÓA MÀN HÌNH toàn bộ máy tính bảng trong phòng học.');
+    try {
+      await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked: true }),
+      });
+      showToast('Đã phát lệnh KHÓA & TẮT MÀN HÌNH toàn bộ máy tính bảng trong phòng học.');
+    } catch {
+      showToast('Lỗi khi gửi lệnh khóa màn hình.');
+    }
   };
 
-  // Unlock entire classroom
-  const handleUnlockAll = () => {
+  // Unlock entire classroom (real hardware wake + dismiss keyguard)
+  const handleUnlockAll = async () => {
     setIsAllLocked(false);
-    showToast('Đã mở khóa toàn bộ máy tính bảng. Học sinh có thể làm bài tiếp tục.');
+    try {
+      await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked: false }),
+      });
+      showToast('Đã mở sáng màn hình toàn bộ máy tính bảng. Học sinh có thể làm bài tiếp tục.');
+    } catch {
+      showToast('Lỗi khi gửi lệnh mở khóa.');
+    }
   };
 
   // Apply or remove Kiosk mode for specific educational app
@@ -285,10 +304,20 @@ export function TeacherClassroomView({
     }
   };
 
-  const handleSendBroadcast = (e: React.FormEvent) => {
+  const handleSendBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!broadcastMessage.trim()) return;
-    showToast(`Đã gửi thông báo đến phòng học: "${broadcastMessage}"`);
+    const msg = broadcastMessage.trim();
+    try {
+      await fetch(`${API_BASE_URL}/devices/classroom-broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg }),
+      });
+      showToast(`Đã gửi thông báo hiển thị trực tiếp lên màn hình tablet: "${msg}"`);
+    } catch {
+      showToast('Lỗi khi gửi thông báo.');
+    }
     setBroadcastMessage('');
     setShowBroadcastModal(false);
   };
@@ -370,6 +399,9 @@ export function TeacherClassroomView({
             </button>
           </div>
         )}
+
+        {/* Hardware ADB Control Status & 1-Time Pairing Banner */}
+        <HardwareControlBanner defaultIp="192.168.1.28" />
 
         {/* Classroom Live Control Dashboard */}
         <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-6">

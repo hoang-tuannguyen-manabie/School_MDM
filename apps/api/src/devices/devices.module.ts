@@ -4,11 +4,12 @@ import { MdmModule } from '../mdm/mdm.module';
 import { SchoolModule } from '../school/school.module';
 import { DevicesController } from './devices.controller';
 import { DevicesService } from './devices.service';
+import { AdbControlService } from './adb-control.service';
 
 @Module({
   imports: [AuthModule, SchoolModule, MdmModule],
   controllers: [DevicesController],
-  providers: [DevicesService],
-  exports: [DevicesService],
+  providers: [DevicesService, AdbControlService],
+  exports: [DevicesService, AdbControlService],
 })
 export class DevicesModule {}

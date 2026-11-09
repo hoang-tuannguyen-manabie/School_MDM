@@ -5,6 +5,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
@@ -30,6 +31,7 @@ import { ClassroomDpcAdapter } from '../mdm/adapters/classroom-dpc.adapter';
 import { DeviceSyncService, type SyncedSchoolDeviceRecord } from '../mdm/device-sync.service';
 import { ClassScopeService } from '../rbac/class-scope.service';
 import { SchoolRepositoryPort } from '../school/school.repository';
+import { AdbControlService } from './adb-control.service';
 
 @Injectable()
 export class DevicesService implements OnModuleInit, OnModuleDestroy {
@@ -74,10 +76,26 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     private readonly schoolRepo: SchoolRepositoryPort,
     private readonly classScope: ClassScopeService,
     private readonly authRepo: AuthRepositoryPort,
+    @Optional() private readonly adbControlService?: AdbControlService,
   ) {}
 
   onModuleInit() {
-    this.pingInterval = setInterval(async () => {
+    // Seed default registered Teclast P30 device from school LAN so it persists across restarts
+    if (this.preRegisteredDevices.size === 0) {
+      this.preRegisterDevice({
+        ipAddress: '192.168.1.28',
+        macAddress: '00:08:22:64:6D:79',
+        androidId: '00:08:22:64:6D:79',
+        serialNumber: '00:08:22:64:6D:79',
+        name: 'Máy Bàn 01 (Teclast P30)',
+        classCode: '6A1',
+        isOnline: true,
+        model: 'Teclast P30 (P30_ROW)',
+        batteryLevel: 91,
+      });
+    }
+
+    const runPingSweep = async () => {
       try {
         const { exec } = await import('node:child_process');
         const { promisify } = await import('node:util');
@@ -100,7 +118,10 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
           }
         }
       } catch {}
-    }, 15000);
+    };
+
+    void runPingSweep();
+    this.pingInterval = setInterval(runPingSweep, 10000);
   }
 
   onModuleDestroy() {
@@ -198,6 +219,8 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   async probeDeviceConnection(target: string): Promise<{
     connected: boolean;
+    adbConnected?: boolean;
+    adbSerial?: string | null;
     ipAddress?: string;
     macAddress?: string;
     latencyMs?: number;
@@ -273,14 +296,20 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
         } catch {}
       }
 
+      const adbStatus = this.adbControlService?.getControlStatus(targetIp);
+
       return {
         connected: true,
+        adbConnected: adbStatus?.adbConnected ?? false,
+        adbSerial: adbStatus?.adbSerial ?? null,
         ipAddress: targetIp,
         macAddress: targetMac || undefined,
         latencyMs,
         model: 'Teclast P30 (P30_ROW)',
         manufacturer: 'Teclast',
-        message: `Kết nối thành công! Thiết bị phản hồi trong ${latencyMs}ms qua mạng LAN/Wi-Fi.`,
+        message: adbStatus?.adbConnected
+          ? `Kết nối mạng (${latencyMs}ms) & Quyền điều khiển phần cứng (ADB Wi-Fi) đã sẵn sàng!`
+          : `Thông mạng LAN/Wi-Fi (${latencyMs}ms). Lưu ý: Hãy bật "Gỡ lỗi qua Wi-Fi" trên máy tính bảng để cấp quyền Khóa màn hình & Ghim ứng dụng.`,
       };
     } catch {
       return {
@@ -326,6 +355,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
         // If device communicated within 60s, it's ONLINE; otherwise OFFLINE
         computedStatus = elapsed <= 60000 ? 'ONLINE' : 'OFFLINE';
       }
+      const adbStatus = this.adbControlService?.getControlStatus(d.ipAddress);
       return {
         id: d.id,
         androidId: d.androidId || d.serialNumber || d.imei,
@@ -336,7 +366,11 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
         name: d.name,
         classCode: d.classCode,
         status: computedStatus,
-        batteryLevel: d.batteryLevel ?? null,
+        adbConnected: adbStatus?.adbConnected ?? false,
+        adbSerial: adbStatus?.adbSerial ?? null,
+        activeApp: adbStatus?.foregroundPackage ?? undefined,
+        isLocked: adbStatus?.isClassroomLocked ?? false,
+        batteryLevel: adbStatus?.batteryLevel ?? d.batteryLevel ?? null,
         model: d.model ?? 'Đang nhận diện...',
         manufacturer: d.manufacturer ?? 'Android Tablet',
         lastSeenAt: d.lastSeenAt ? d.lastSeenAt.toISOString() : null,

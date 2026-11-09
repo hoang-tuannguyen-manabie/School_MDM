@@ -32,6 +32,7 @@ import { JwtAuthGuard, type AuthenticatedRequest } from '../auth/auth.guard';
 import { DeviceSyncService, type MdmSyncRunRecord } from '../mdm/device-sync.service';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
+import { AdbControlService } from './adb-control.service';
 import { DevicesService } from './devices.service';
 
 @Controller()
@@ -39,7 +40,78 @@ export class DevicesController {
   constructor(
     private readonly devicesService: DevicesService,
     private readonly deviceSyncService: DeviceSyncService,
+    private readonly adbControlService: AdbControlService,
   ) {}
+
+  @Get('devices/adb-status')
+  async getAdbStatus(@Query('ipAddress') ipAddress?: string) {
+    await this.adbControlService.refreshDevices();
+    const status = this.adbControlService.getControlStatus(ipAddress);
+    return {
+      data: status,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/adb-pair')
+  @HttpCode(HttpStatus.OK)
+  async pairAndConnectAdb(
+    @Body()
+    body: {
+      ipAddress: string;
+      pairingPort?: string;
+      pairingCode?: string;
+      connectPort?: string;
+    },
+  ) {
+    const result = await this.adbControlService.pairAndConnectDevice(body);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/classroom-lock')
+  @HttpCode(HttpStatus.OK)
+  async setClassroomLock(
+    @Body()
+    body: {
+      locked: boolean;
+    },
+  ) {
+    const result = await this.adbControlService.setClassroomLock(Boolean(body.locked));
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/classroom-broadcast')
+  @HttpCode(HttpStatus.OK)
+  async sendClassroomBroadcast(
+    @Body()
+    body: {
+      message: string;
+    },
+  ) {
+    const result = await this.adbControlService.sendBroadcastMessage(body.message || '');
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
 
   @Post('mdm/agent/heartbeat')
   @HttpCode(HttpStatus.OK)

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
@@ -19,6 +20,7 @@ import {
 } from '@school-mdm/validation';
 import { AuthRepositoryPort } from '../auth/auth.repository';
 import { CommandsService } from '../commands/commands.service';
+import { AdbControlService } from '../devices/adb-control.service';
 import { DevicesService } from '../devices/devices.service';
 import { MdmCapabilityService } from '../mdm/mdm-capability.service';
 import { MdmProviderService } from '../mdm/mdm-provider.service';
@@ -36,6 +38,7 @@ export class ApplicationsService {
     private readonly mdmCapabilityService: MdmCapabilityService,
     private readonly classScope: ClassScopeService,
     private readonly authRepo: AuthRepositoryPort,
+    @Optional() private readonly adbControlService?: AdbControlService,
   ) {
     this.seedDefaultDeviceApps();
   }
@@ -143,12 +146,14 @@ export class ApplicationsService {
     }
     app.isApproved = !app.isApproved;
     app.updatedAt = new Date().toISOString();
+    void this.adbControlService?.syncAppCatalogPermissions(this.listApplications());
     return { ...app };
   }
 
   setActiveKioskApp(appId: string | null): { activeKioskApp: ApplicationCatalogItemDto | null } {
     if (!appId) {
       this.activeKioskAppId = null;
+      void this.adbControlService?.setKioskApp(null);
       return { activeKioskApp: null };
     }
     const app = this.appsById.get(appId);
@@ -156,6 +161,7 @@ export class ApplicationsService {
       throw new NotFoundException('Không tìm thấy ứng dụng để ghim');
     }
     this.activeKioskAppId = appId;
+    void this.adbControlService?.setKioskApp(app.packageName);
     return { activeKioskApp: { ...app } };
   }
 
@@ -198,6 +204,7 @@ export class ApplicationsService {
       updatedAt: nowIso,
     };
     this.appsById.set(id, app);
+    void this.adbControlService?.syncAppCatalogPermissions(this.listApplications());
     return app;
   }
 
