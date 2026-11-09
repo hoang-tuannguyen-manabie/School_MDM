@@ -545,7 +545,7 @@ export function TeacherClassroomView({
                           {device.model || 'Android Tablet'}
                         </h4>
                         <p className="text-[11px] font-mono text-slate-500">
-                          IMEI: {device.imei}
+                          {device.serialNumber ? `S/N: ${device.serialNumber}` : `IMEI: ${device.imei}`}
                         </p>
                       </div>
 
@@ -647,7 +647,7 @@ export function TeacherClassroomView({
                       Hệ thống trường học chưa có máy tính bảng nào
                     </h4>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
-                      Chưa có máy tính bảng nào được Quản trị viên đăng ký theo mã IMEI. Vui lòng chuyển sang Cổng Quản trị viên để đăng ký thiết bị mới.
+                      Chưa có máy tính bảng nào được Quản trị viên đăng ký theo Số Serial / IMEI. Vui lòng chuyển sang Cổng Quản trị viên để đăng ký thiết bị mới.
                     </p>
                   </div>
                   <button
@@ -707,7 +707,7 @@ export function TeacherClassroomView({
                                 </span>
                               </div>
                               <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                                IMEI: {dev.imei} • {dev.model || 'Android Tablet'}
+                                {dev.serialNumber ? `S/N: ${dev.serialNumber}` : `IMEI: ${dev.imei}`} • {dev.model || 'Android Tablet'}
                               </p>
                             </div>
                           </div>

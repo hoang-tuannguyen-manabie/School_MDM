@@ -70,19 +70,25 @@ export class DevicesService {
   ) {}
 
   preRegisterDevice(input: {
-    imei: string;
+    imei?: string;
     serialNumber?: string;
     name: string;
     classCode?: string;
   }) {
-    const trimmedImei = (input.imei || '').trim();
-    if (!trimmedImei) {
-      throw new BadRequestException('Mã IMEI không được để trống');
+    const rawIdentifier = (input.serialNumber || input.imei || '').trim();
+    if (!rawIdentifier) {
+      throw new BadRequestException('Vui lòng nhập Số Serial hoặc Mã IMEI của thiết bị');
     }
 
-    // Check if IMEI already exists
+    const trimmedSerial = (input.serialNumber || '').trim() || rawIdentifier;
+    const trimmedImei = (input.imei || '').trim() || rawIdentifier;
+
+    // Check if device with this Serial / IMEI already exists
     for (const d of this.preRegisteredDevices.values()) {
-      if (d.imei === trimmedImei) {
+      if (
+        (d.serialNumber && d.serialNumber.toLowerCase() === trimmedSerial.toLowerCase()) ||
+        (d.imei && d.imei.toLowerCase() === trimmedImei.toLowerCase())
+      ) {
         return d;
       }
     }
@@ -91,7 +97,7 @@ export class DevicesService {
     const record = {
       id,
       imei: trimmedImei,
-      serialNumber: (input.serialNumber || '').trim() || trimmedImei,
+      serialNumber: trimmedSerial,
       name: (input.name || '').trim() || `Máy Bàn ${this.preRegisteredDevices.size + 1}`,
       classCode: input.classCode || '6A1',
       status: 'PENDING_DETECTION' as const,
@@ -170,14 +176,21 @@ export class DevicesService {
       );
     }
 
-    // Match against real physical devices pre-registered by IMEI or serialNumber
-    const matchedImei = (parsed.data.imei || '').trim();
-    const matchedSerial = (parsed.data.serialNumber || '').trim();
+    // Match against real physical devices pre-registered by Serial Number, IMEI or externalDeviceId
+    const matchedImei = (parsed.data.imei || '').trim().toLowerCase();
+    const matchedSerial = (parsed.data.serialNumber || '').trim().toLowerCase();
+    const matchedExtId = (parsed.data.externalDeviceId || '').trim().toLowerCase();
+
     for (const [key, preReg] of this.preRegisteredDevices.entries()) {
-      if (
-        (matchedImei && preReg.imei === matchedImei) ||
-        (matchedSerial && preReg.serialNumber === matchedSerial)
-      ) {
+      const regSerial = (preReg.serialNumber || '').toLowerCase();
+      const regImei = (preReg.imei || '').toLowerCase();
+
+      const isMatch =
+        (matchedSerial && (regSerial === matchedSerial || regImei === matchedSerial)) ||
+        (matchedImei && (regImei === matchedImei || regSerial === matchedImei)) ||
+        (matchedExtId && (regSerial === matchedExtId || regImei === matchedExtId));
+
+      if (isMatch) {
         this.preRegisteredDevices.set(key, {
           ...preReg,
           status: 'ONLINE',

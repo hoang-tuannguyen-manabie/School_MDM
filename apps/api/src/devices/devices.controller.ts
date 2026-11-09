@@ -63,7 +63,7 @@ export class DevicesController {
   async preRegisterDevice(
     @Body()
     body: {
-      imei: string;
+      imei?: string;
       serialNumber?: string;
       name: string;
       classCode?: string;

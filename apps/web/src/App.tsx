@@ -159,7 +159,7 @@ function OverviewView({
         <div className="space-y-1.5">
           <h3 className="text-xl font-bold tracking-tight text-white">5 bước đưa máy tính bảng vào giảng dạy</h3>
           <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-            Kết nối máy tính bảng học sinh bằng mã IMEI thật. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
+            Kết nối máy tính bảng học sinh bằng Số Serial (máy Wi-Fi như Teclast P30) hoặc mã IMEI. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
           </p>
         </div>
 
@@ -175,7 +175,7 @@ function OverviewView({
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-indigo-400" />
-            <span>Đăng ký máy thật (IMEI)</span>
+            <span>Đăng ký máy thật (S/N / IMEI)</span>
           </button>
         </div>
       </div>
@@ -204,7 +204,7 @@ function OverviewView({
             {onlineCount} Máy trực tuyến
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            {totalCount > 0 ? `Trên tổng số ${totalCount} máy đã nhập IMEI` : 'Chưa có máy trực tuyến'}
+            {totalCount > 0 ? `Trên tổng số ${totalCount} máy đã đăng ký` : 'Chưa có máy trực tuyến'}
           </p>
         </div>
 
@@ -258,11 +258,11 @@ function OverviewView({
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Nhập IMEI Thiết bị Thật</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Đăng ký Thiết bị Thật (S/N / IMEI)</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Đăng ký mã IMEI thiết bị vật lý để hệ thống tự động nhận diện khi máy khởi động.
+              Đăng ký Số Serial (đối với máy tính bảng Wi-Fi như Teclast P30) hoặc IMEI để hệ thống tự động nhận diện khi máy khởi động.
             </p>
           </div>
 
@@ -397,6 +397,7 @@ function DevicesAndSessionControlView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imei: cleanImei,
+          serialNumber: cleanImei,
           name: enrollName.trim() || `Máy Bàn ${devices.length + 1}`,
           classCode: enrollClassCode || '6A1',
         }),
@@ -450,7 +451,7 @@ function DevicesAndSessionControlView({
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">
-            Dành cho Quản trị viên: Đăng ký thiết bị thật qua mã IMEI, phân phối vào kho hoặc các lớp học.
+            Dành cho Quản trị viên: Đăng ký thiết bị thật qua Số Serial / IMEI (hỗ trợ máy Wi-Fi như Teclast P30), phân phối vào kho hoặc các lớp học.
           </p>
         </div>
 
@@ -481,7 +482,7 @@ function DevicesAndSessionControlView({
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Đăng ký máy thật (IMEI)</span>
+            <span>Đăng ký máy thật (S/N / IMEI)</span>
           </button>
 
           <button
@@ -596,7 +597,7 @@ function DevicesAndSessionControlView({
           <thead>
             <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
               <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
-              <th className="py-3 px-4 font-semibold">Mã IMEI / Serial</th>
+              <th className="py-3 px-4 font-semibold">Số Serial / IMEI</th>
               <th className="py-3 px-4 font-semibold">Lớp học</th>
               <th className="py-3 px-4 font-semibold">Trạng thái</th>
               <th className="py-3 px-4 font-semibold">Phần cứng</th>
@@ -616,7 +617,7 @@ function DevicesAndSessionControlView({
                         Chưa có thiết bị nào trong hệ thống
                       </p>
                       <p className="text-xs text-slate-500 max-w-md mt-0.5">
-                        Bấm nút "Đăng ký máy thật (IMEI)" bên trên để thêm mã IMEI. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
+                        Bấm nút "Đăng ký máy thật (S/N / IMEI)" bên trên để thêm số Serial hoặc IMEI. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
                       </p>
                     </div>
                   </div>
@@ -631,7 +632,7 @@ function DevicesAndSessionControlView({
                   <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
                     <td className="py-3 px-4 font-mono text-xs text-slate-600 tabular-nums">
-                      {d.imei}
+                      {d.serialNumber || d.imei}
                     </td>
                     <td className="py-3 px-4 font-medium text-xs text-slate-700">
                       {d.classCode === 'KHO' ? (
@@ -711,7 +712,7 @@ function DevicesAndSessionControlView({
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Dành riêng cho Quản trị viên: Nhập mã IMEI vật lý để thêm thiết bị vào hệ thống trường học. Sau khi đăng ký, máy tính bảng sẽ sẵn sàng để Giáo viên chọn vào tiết học tại lớp.
+              Dành riêng cho Quản trị viên: Nhập Số Serial (đối với máy tính bảng Wi-Fi không SIM như Teclast P30) hoặc mã IMEI để thêm thiết bị vào hệ thống trường học. Sau khi đăng ký, máy tính bảng sẽ sẵn sàng để Giáo viên chọn vào tiết học tại lớp.
             </p>
 
             {enrollError && (
@@ -723,18 +724,18 @@ function DevicesAndSessionControlView({
             <form onSubmit={handleEnrollDevice} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mã IMEI / Số Serial thiết bị <span className="text-rose-500">*</span>
+                  Số Serial / Mã máy (hoặc IMEI nếu có SIM) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={enrollImei}
                   onChange={(e) => setEnrollImei(e.target.value)}
-                  placeholder="Ví dụ: 863456041234567"
+                  placeholder="Ví dụ: P30T202409001 (hoặc số Serial sau lưng máy)"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Mã 15 chữ số in sau lưng máy hoặc bấm <code>*#06#</code> trên máy tính bảng
+                  Đối với Teclast P30 (Wi-Fi): Xem Số sê-ri in trên tem lưng máy hoặc vào Cài đặt &gt; Thông tin máy tính bảng &gt; Số sê-ri.
                 </p>
               </div>
 
