@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
+import { AppDeviceIcon } from '../components/AppDeviceIcon';
 
 export interface ClassroomAppItem {
   id: string;
@@ -468,13 +469,20 @@ export function TeacherClassroomView({
               {activeKioskApp ? (
                 <button
                   onClick={() => handleApplyKiosk(null)}
-                  className="p-3.5 rounded-xl border border-indigo-300 bg-indigo-50/80 hover:bg-indigo-100 text-left transition flex items-center justify-between group shadow-xs"
+                  className="p-3.5 rounded-xl border border-indigo-300 bg-indigo-50/90 hover:bg-indigo-100 text-left transition flex items-center justify-between group shadow-xs"
                 >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-800">
-                      <Pin className="w-4 h-4 text-indigo-600" /> Bỏ ghim [{activeKioskApp.name}]
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <AppDeviceIcon
+                      packageName={activeKioskApp.packageName}
+                      name={activeKioskApp.name}
+                      size="sm"
+                    />
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-800 truncate">
+                        <Pin className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Bỏ ghim [{activeKioskApp.name}]
+                      </div>
+                      <p className="text-[11px] text-slate-600 truncate">Bấm để cho phép dùng các app khác</p>
                     </div>
-                    <p className="text-[11px] text-slate-600">Bấm để cho phép dùng các app khác</p>
                   </div>
                 </button>
               ) : (
@@ -546,21 +554,32 @@ export function TeacherClassroomView({
                     )}
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[110px]" title={app.packageName}>
-                          {app.packageName}
-                        </span>
-                        {isKiosked ? (
-                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                            <Pin className="w-2.5 h-2.5" /> Ghim
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
-                            <Check className="w-2.5 h-2.5" /> Cho phép
-                          </span>
-                        )}
+                      <div className="flex items-start gap-2.5 mb-2">
+                        <AppDeviceIcon
+                          packageName={app.packageName}
+                          name={app.name}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[90px]" title={app.packageName}>
+                              {app.packageName}
+                            </span>
+                            {isKiosked ? (
+                              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                                <Pin className="w-2.5 h-2.5" /> Ghim
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                                <Check className="w-2.5 h-2.5" /> Cho phép
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="text-xs font-bold text-slate-900 line-clamp-1 mt-1" title={app.name}>
+                            {app.name}
+                          </h5>
+                        </div>
                       </div>
-                      <h5 className="text-xs font-bold text-slate-900 line-clamp-1">{app.name}</h5>
                       <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
                         {app.description || 'Ứng dụng phục vụ học tập'}
                       </p>
@@ -583,14 +602,25 @@ export function TeacherClassroomView({
               })}
             </div>
 
-            {/* Blocked Apps Notice */}
+            {/* Blocked Apps Notice with real icons */}
             {blockedApps.length > 0 && (
-              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                <div className="flex items-center gap-1.5">
-                  <EyeOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>
-                    <strong>Khóa an toàn {blockedApps.length} ứng dụng:</strong> {blockedApps.map((a) => a.name).join(', ')} (Học sinh không thể mở để chống xao nhãng).
-                  </span>
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-rose-700">
+                    <EyeOff className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>Khóa an toàn {blockedApps.length} ứng dụng:</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {blockedApps.map((bApp) => (
+                      <span
+                        key={bApp.id}
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-medium"
+                      >
+                        <AppDeviceIcon packageName={bApp.packageName} name={bApp.name} size="xs" />
+                        <span>{bApp.name}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <span className="text-slate-400 italic">Quản lý tại Cổng Quản trị viên &gt; Kho Ứng dụng</span>
               </div>
@@ -620,11 +650,20 @@ export function TeacherClassroomView({
               </p>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Ứng dụng đang ghim</span>
-              <p className="text-sm font-bold text-indigo-700 truncate mt-1">
-                {activeKioskApp ? activeKioskApp.name : 'Không ghim (Tự do)'}
-              </p>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-[11px] text-slate-500">Ứng dụng đang ghim</span>
+                <p className="text-sm font-bold text-indigo-700 truncate mt-1">
+                  {activeKioskApp ? activeKioskApp.name : 'Không ghim (Tự do)'}
+                </p>
+              </div>
+              {activeKioskApp && (
+                <AppDeviceIcon
+                  packageName={activeKioskApp.packageName}
+                  name={activeKioskApp.name}
+                  size="sm"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -765,6 +804,22 @@ export function TeacherClassroomView({
                         <span className="font-medium text-slate-700 truncate max-w-[130px]" title={device.lastSeen}>
                           {device.lastSeen}
                         </span>
+                      </div>
+
+                      {/* Current Active App / Kiosk on Device */}
+                      <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-50">
+                        <span className="text-slate-500">Ứng dụng:</span>
+                        {activeKioskApp ? (
+                          <div className="flex items-center gap-1.5 font-semibold text-indigo-700 truncate max-w-[130px]" title={activeKioskApp.name}>
+                            <AppDeviceIcon packageName={activeKioskApp.packageName} name={activeKioskApp.name} size="xs" />
+                            <span className="truncate">{activeKioskApp.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-emerald-700 font-medium flex items-center gap-1 text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Tự do các app
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

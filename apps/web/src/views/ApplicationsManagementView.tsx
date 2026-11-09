@@ -11,6 +11,7 @@ import {
   Check,
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import { AppDeviceIcon } from '../components/AppDeviceIcon';
 
 export interface ApplicationItem {
   id: string;
@@ -212,9 +213,11 @@ export function ApplicationsManagementView(): React.ReactElement {
       {activeKioskApp ? (
         <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-indigo-600 text-white shadow-xs">
-              <Pin className="w-5 h-5" />
-            </div>
+            <AppDeviceIcon
+              packageName={activeKioskApp.packageName}
+              name={activeKioskApp.name}
+              size="lg"
+            />
             <div>
               <p className="text-xs font-bold text-indigo-950 flex items-center gap-2">
                 ĐANG GHIM ỨNG DỤNG HỌC TẬP: <span className="underline">{activeKioskApp.name}</span>
@@ -350,15 +353,11 @@ export function ApplicationsManagementView(): React.ReactElement {
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-xs ${
-                            app.isApproved
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {app.name.slice(0, 2).toUpperCase()}
-                        </div>
+                        <AppDeviceIcon
+                          packageName={app.packageName}
+                          name={app.name}
+                          size="md"
+                        />
                         <div>
                           <p className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
                             {app.name}
