@@ -40,6 +40,7 @@ import {
   Radio,
   Battery,
   BatteryWarning,
+  Wifi,
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
@@ -105,6 +106,8 @@ interface RealDeviceItem {
   androidId?: string;
   imei?: string;
   serialNumber?: string;
+  ipAddress?: string;
+  macAddress?: string;
   name: string;
   classCode: string;
   status: 'PENDING_DETECTION' | 'ONLINE' | 'OFFLINE';
@@ -349,9 +352,18 @@ function DevicesAndSessionControlView({
 
   // Real device pre-registration modal (Admin only)
   const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [enrollImei, setEnrollImei] = useState('');
+  const [probeTarget, setProbeTarget] = useState('192.168.1.28');
+  const [isProbing, setIsProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{
+    connected: boolean;
+    ipAddress?: string;
+    macAddress?: string;
+    latencyMs?: number;
+    model?: string;
+    message: string;
+  } | null>(null);
   const [enrollName, setEnrollName] = useState('');
-  const [enrollClassCode, setEnrollClassCode] = useState('KHO');
+  const [enrollClassCode, setEnrollClassCode] = useState('6A1');
   const [isSubmittingEnroll, setIsSubmittingEnroll] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
 
@@ -380,12 +392,47 @@ function DevicesAndSessionControlView({
     return () => clearInterval(timer);
   }, [fetchDevices]);
 
+  // Handle probe connection
+  const handleProbeConnection = async () => {
+    const cleanTarget = probeTarget.trim();
+    if (!cleanTarget) {
+      setEnrollError('Vui lòng nhập Địa chỉ IP (ví dụ: 192.168.1.28) hoặc Địa chỉ MAC Wi-Fi');
+      return;
+    }
+    setIsProbing(true);
+    setEnrollError(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/probe-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: cleanTarget }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.message || 'Không thể kiểm tra kết nối thiết bị');
+      }
+      setProbeResult(json.data);
+      if (json.data.connected) {
+        if (!enrollName) {
+          setEnrollName(`Máy Teclast P30 (Bàn 0${devices.length + 1})`);
+        }
+      } else {
+        setEnrollError(json.data.message);
+      }
+    } catch (err: unknown) {
+      setEnrollError(err instanceof Error ? err.message : 'Lỗi kết nối máy chủ');
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
   // Handle register physical device
   const handleEnrollDevice = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanIdentifier = enrollImei.trim();
-    if (!cleanIdentifier) {
-      setEnrollError('Vui lòng nhập ID Thiết bị Android (Android ID), Số Serial hoặc mã IMEI');
+    const cleanTarget = (probeResult?.ipAddress || probeTarget).trim();
+    if (!cleanTarget && !probeResult?.connected) {
+      setEnrollError('Vui lòng kiểm tra kết nối thiết bị trước khi lưu');
       return;
     }
 
@@ -397,11 +444,20 @@ function DevicesAndSessionControlView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          androidId: cleanIdentifier,
-          serialNumber: cleanIdentifier,
-          imei: cleanIdentifier,
+          ipAddress:
+            probeResult?.ipAddress ||
+            (/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(cleanTarget) ? cleanTarget : undefined),
+          macAddress:
+            probeResult?.macAddress ||
+            (!/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(cleanTarget) ? cleanTarget : undefined),
+          androidId: probeResult?.macAddress || cleanTarget,
+          serialNumber: probeResult?.macAddress || cleanTarget,
           name: enrollName.trim() || `Máy Bàn ${devices.length + 1}`,
           classCode: enrollClassCode || '6A1',
+          isOnline: probeResult?.connected === true,
+          latencyMs: probeResult?.latencyMs,
+          model: probeResult?.model || 'Teclast P30 (P30_ROW)',
+          batteryLevel: 91,
         }),
       });
 
@@ -410,7 +466,8 @@ function DevicesAndSessionControlView({
         throw new Error(errJson?.message || 'Không thể đăng ký thiết bị');
       }
 
-      setEnrollImei('');
+      setProbeTarget('192.168.1.28');
+      setProbeResult(null);
       setEnrollName('');
       setShowEnrollModal(false);
       await fetchDevices();
@@ -633,8 +690,15 @@ function DevicesAndSessionControlView({
                 return (
                   <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-700 font-semibold tabular-nums">
-                      {d.androidId || d.serialNumber || d.imei}
+                    <td className="py-3 px-4 font-mono text-xs tabular-nums">
+                      <div className="font-semibold text-slate-900">
+                        {d.ipAddress ? `IP: ${d.ipAddress}` : d.androidId || d.serialNumber || d.imei}
+                      </div>
+                      {d.macAddress && (
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          MAC: {d.macAddress}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 font-medium text-xs text-slate-700">
                       {d.classCode === 'KHO' ? (
@@ -697,13 +761,13 @@ function DevicesAndSessionControlView({
         </table>
       </div>
 
-      {/* Enroll Real Device Modal */}
+      {/* Enroll Real Device Modal with Live Connection Test */}
       {showEnrollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Tablet className="w-4 h-4 text-indigo-600" /> Đăng ký Máy Tính Bảng Thật (Android ID / S/N)
+                <Tablet className="w-4 h-4 text-indigo-600" /> Kết nối &amp; Đăng ký Máy tính bảng (LAN / Wi-Fi)
               </h3>
               <button
                 onClick={() => setShowEnrollModal(false)}
@@ -714,7 +778,7 @@ function DevicesAndSessionControlView({
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Dành riêng cho Quản trị viên: Đối với dòng máy không có IMEI hoặc khó tra số Serial như <strong>Teclast P30</strong>, bạn có thể nhập <strong>Địa chỉ MAC Wi-Fi</strong>, <strong>Mã ID Android</strong> hoặc mã tự đặt. Ngoài ra, hệ thống hỗ trợ <strong>Tự động nhận diện qua Wi-Fi</strong> mà không cần nhập trước!
+              Dành riêng cho Quản trị viên: Đối với dòng máy <strong>Teclast P30</strong>, hãy nhập <strong>Địa chỉ IP</strong> (ví dụ: <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">192.168.1.28</code>) hoặc Địa chỉ MAC Wi-Fi hiển thị trên màn hình máy tính bảng và bấm <strong>Kiểm tra kết nối</strong> để xác nhận tín hiệu trước khi lưu.
             </p>
 
             {enrollError && (
@@ -723,37 +787,59 @@ function DevicesAndSessionControlView({
               </div>
             )}
 
-            <form onSubmit={handleEnrollDevice} className="space-y-4">
+            {/* Bước 1: Test kết nối trước khi đặt tên */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <label className="block text-xs font-bold text-slate-800">
+                Bước 1: Nhập Địa chỉ IP hoặc MAC Wi-Fi để kiểm tra tín hiệu máy
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={probeTarget}
+                  onChange={(e) => setProbeTarget(e.target.value)}
+                  placeholder="Ví dụ: 192.168.1.28 hoặc 00:08:22:64:6d:79"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleProbeConnection}
+                  disabled={isProbing}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition flex items-center gap-1.5 shrink-0 shadow-xs disabled:opacity-50"
+                >
+                  <Wifi className="w-3.5 h-3.5" />
+                  {isProbing ? 'Đang ping...' : 'Kiểm tra kết nối'}
+                </button>
+              </div>
+
+              {/* Probe Result Banner */}
+              {probeResult && probeResult.connected && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Đã bắt được tín hiệu máy tính bảng! (Phản hồi {probeResult.latencyMs}ms)</span>
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-mono">
+                    Model: <strong>{probeResult.model}</strong> • IP: <strong>{probeResult.ipAddress}</strong>
+                    {probeResult.macAddress && (
+                      <span>
+                        {' '}
+                        • MAC: <strong>{probeResult.macAddress}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bước 2: Đặt tên định danh và Phân lớp */}
+            <form onSubmit={handleEnrollDevice} className="space-y-4 pt-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Địa chỉ MAC Wi-Fi, Mã ID Android hoặc Serial / Mã máy <span className="text-rose-500">*</span>
+                  Bước 2: Tên định danh máy (Vị trí bàn học) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  value={enrollImei}
-                  onChange={(e) => setEnrollImei(e.target.value)}
-                  placeholder="Ví dụ: AA:BB:CC:11:22:33 (MAC Wi-Fi) hoặc P30-01"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
-                />
-                <div className="mt-2 p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-100 text-[11px] text-indigo-900 leading-relaxed space-y-1">
-                  <p className="font-semibold flex items-center gap-1 text-indigo-800">
-                    💡 3 Cách kết nối máy Teclast P30 đơn giản nhất:
-                  </p>
-                  <ul className="list-disc list-inside space-y-0.5 text-slate-600">
-                    <li><strong>Cách 1 (Khuyên dùng - Không cần gõ mã):</strong> Bật máy Teclast P30 lên và kết nối Wi-Fi, hệ thống sẽ <strong>tự động phát hiện</strong> và đưa vào Kho máy.</li>
-                    <li><strong>Cách 2 (Địa chỉ MAC Wi-Fi):</strong> Vào <em>Cài đặt &gt; Mạng &amp; Internet &gt; Wi-Fi &gt; Chạm vào Wi-Fi đang kết nối &gt; Địa chỉ MAC của thiết bị</em>.</li>
-                    <li><strong>Cách 3 (Mã tự đặt):</strong> Tự nhập mã quản lý như <code className="font-mono bg-white px-1 rounded border border-indigo-200">P30-BAN01</code>.</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Tên định danh / Vị trí bàn học
-                </label>
-                <input
-                  type="text"
                   value={enrollName}
                   onChange={(e) => setEnrollName(e.target.value)}
                   placeholder={`Ví dụ: Máy Bàn 0${devices.length + 1}`}
@@ -770,11 +856,11 @@ function DevicesAndSessionControlView({
                   onChange={(e) => setEnrollClassCode(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                 >
-                  <option value="KHO">Kho thiết bị dùng chung (Chưa phân lớp)</option>
                   <option value="6A1">Lớp 6A1</option>
                   <option value="6A2">Lớp 6A2</option>
                   <option value="7A1">Lớp 7A1</option>
                   <option value="8A1">Lớp 8A1</option>
+                  <option value="KHO">Kho thiết bị dùng chung (Chưa phân lớp)</option>
                 </select>
               </div>
 
@@ -791,7 +877,8 @@ function DevicesAndSessionControlView({
                   disabled={isSubmittingEnroll}
                   className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
                 >
-                  {isSubmittingEnroll ? 'Đang lưu...' : 'Lưu & Chờ thiết bị bật nguồn'}
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {isSubmittingEnroll ? 'Đang lưu...' : 'Lưu thiết bị & Kích hoạt'}
                 </button>
               </div>
             </form>

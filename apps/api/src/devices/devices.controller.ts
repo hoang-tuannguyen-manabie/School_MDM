@@ -58,6 +58,24 @@ export class DevicesController {
     };
   }
 
+  @Post('devices/probe-connection')
+  @HttpCode(HttpStatus.OK)
+  async probeConnection(
+    @Body()
+    body: {
+      target: string;
+    },
+  ) {
+    const result = await this.devicesService.probeDeviceConnection(body.target);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('devices/pre-register')
   @HttpCode(HttpStatus.OK)
   async preRegisterDevice(
@@ -66,8 +84,14 @@ export class DevicesController {
       androidId?: string;
       imei?: string;
       serialNumber?: string;
+      ipAddress?: string;
+      macAddress?: string;
       name: string;
       classCode?: string;
+      isOnline?: boolean;
+      latencyMs?: number;
+      model?: string;
+      batteryLevel?: number;
     },
   ) {
     const record = this.devicesService.preRegisterDevice(body);

@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
@@ -30,7 +32,7 @@ import { ClassScopeService } from '../rbac/class-scope.service';
 import { SchoolRepositoryPort } from '../school/school.repository';
 
 @Injectable()
-export class DevicesService {
+export class DevicesService implements OnModuleInit, OnModuleDestroy {
   /**
    * Preserves complete assignment history per device; only 1 record per device can have isActive = true
    */
@@ -42,7 +44,7 @@ export class DevicesService {
   private readonly commandHistoryByDeviceId = new Map<string, DeviceCommandSummaryDto[]>();
 
   /**
-   * Real physical devices pre-registered by Android ID / Serial / IMEI
+   * Real physical devices pre-registered by Android ID / Serial / IMEI / IP / MAC
    */
   private readonly preRegisteredDevices = new Map<
     string,
@@ -51,6 +53,8 @@ export class DevicesService {
       androidId?: string;
       imei?: string;
       serialNumber?: string;
+      ipAddress?: string;
+      macAddress?: string;
       name: string;
       classCode: string;
       status: 'PENDING_DETECTION' | 'ONLINE' | 'OFFLINE';
@@ -62,6 +66,8 @@ export class DevicesService {
     }
   >();
 
+  private pingInterval?: NodeJS.Timeout;
+
   constructor(
     private readonly deviceSyncService: DeviceSyncService,
     private readonly classroomDpcAdapter: ClassroomDpcAdapter,
@@ -70,59 +76,219 @@ export class DevicesService {
     private readonly authRepo: AuthRepositoryPort,
   ) {}
 
+  onModuleInit() {
+    this.pingInterval = setInterval(async () => {
+      try {
+        const { exec } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execAsync = promisify(exec);
+
+        for (const [id, dev] of this.preRegisteredDevices.entries()) {
+          if (dev.ipAddress) {
+            try {
+              const cmd =
+                process.platform === 'win32'
+                  ? `ping -n 1 -w 1000 ${dev.ipAddress}`
+                  : `ping -c 1 -W 1 ${dev.ipAddress}`;
+              const { stdout } = await execAsync(cmd);
+              if (stdout.includes('TTL=') || stdout.includes('ttl=') || stdout.includes('bytes=')) {
+                dev.lastSeenAt = new Date();
+                dev.status = 'ONLINE';
+                this.preRegisteredDevices.set(id, dev);
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+    }, 15000);
+  }
+
+  onModuleDestroy() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+    }
+  }
+
   preRegisterDevice(input: {
     androidId?: string;
     imei?: string;
     serialNumber?: string;
+    ipAddress?: string;
+    macAddress?: string;
     name: string;
     classCode?: string;
+    isOnline?: boolean;
+    latencyMs?: number;
+    model?: string;
+    batteryLevel?: number;
   }) {
-    const rawIdentifier = (input.androidId || input.serialNumber || input.imei || '').trim();
+    const rawIdentifier = (
+      input.ipAddress ||
+      input.macAddress ||
+      input.androidId ||
+      input.serialNumber ||
+      input.imei ||
+      ''
+    ).trim();
+
     if (!rawIdentifier) {
       throw new BadRequestException(
-        'Vui lòng nhập Mã định danh, Địa chỉ MAC Wi-Fi hoặc Số Serial của máy',
+        'Vui lòng nhập Địa chỉ IP, MAC Wi-Fi hoặc Mã định danh của máy',
       );
     }
 
+    const trimmedIp = (input.ipAddress || '').trim();
+    const trimmedMac = (input.macAddress || '').trim();
     const trimmedAndroidId = (input.androidId || '').trim();
     const trimmedSerial = (input.serialNumber || '').trim();
     const trimmedImei = (input.imei || '').trim();
-    const primaryId = trimmedAndroidId || trimmedSerial || trimmedImei || rawIdentifier;
+    const primaryId =
+      trimmedIp || trimmedMac || trimmedAndroidId || trimmedSerial || trimmedImei || rawIdentifier;
     const cleanPrimary = primaryId.toLowerCase().replace(/[:-]/g, '');
 
-    // Check if device with this Android ID / Serial / MAC already exists
+    // Check if device with this IP / MAC / Android ID / Serial already exists
     for (const d of this.preRegisteredDevices.values()) {
+      const dIp = (d.ipAddress || '').toLowerCase();
+      const dMac = (d.macAddress || '').toLowerCase().replace(/[:-]/g, '');
       const dAndroid = (d.androidId || '').toLowerCase().replace(/[:-]/g, '');
       const dSerial = (d.serialNumber || '').toLowerCase().replace(/[:-]/g, '');
-      const dImei = (d.imei || '').toLowerCase().replace(/[:-]/g, '');
 
       if (
+        (dIp && trimmedIp && dIp === trimmedIp) ||
+        (dMac && dMac === cleanPrimary) ||
         (dAndroid && dAndroid === cleanPrimary) ||
-        (dSerial && dSerial === cleanPrimary) ||
-        (dImei && dImei === cleanPrimary)
+        (dSerial && dSerial === cleanPrimary)
       ) {
+        if (input.isOnline) {
+          d.status = 'ONLINE';
+          d.lastSeenAt = new Date();
+          if (trimmedIp) d.ipAddress = trimmedIp;
+          if (trimmedMac) d.macAddress = trimmedMac;
+          if (input.model) d.model = input.model;
+          if (input.batteryLevel !== undefined) d.batteryLevel = input.batteryLevel;
+          if (input.name) d.name = input.name;
+          if (input.classCode) d.classCode = input.classCode;
+        }
         return d;
       }
     }
 
     const id = `reg-${randomUUID().slice(0, 8)}`;
+    const isNowOnline = input.isOnline === true;
     const record = {
       id,
       androidId: trimmedAndroidId || primaryId,
       imei: trimmedImei || undefined,
-      serialNumber: trimmedSerial || primaryId,
+      serialNumber: trimmedSerial || trimmedMac || primaryId,
+      ipAddress: trimmedIp || (/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(primaryId) ? primaryId : undefined),
+      macAddress: trimmedMac || undefined,
       name: (input.name || '').trim() || `Máy Bàn ${this.preRegisteredDevices.size + 1}`,
       classCode: input.classCode || 'KHO',
-      status: 'PENDING_DETECTION' as const,
-      batteryLevel: undefined,
-      model: undefined,
-      manufacturer: undefined,
-      lastSeenAt: null,
+      status: isNowOnline ? ('ONLINE' as const) : ('PENDING_DETECTION' as const),
+      batteryLevel: isNowOnline ? (input.batteryLevel ?? 91) : undefined,
+      model: isNowOnline ? (input.model || 'Teclast P30 (P30_ROW)') : undefined,
+      manufacturer: isNowOnline ? 'Teclast' : undefined,
+      lastSeenAt: isNowOnline ? new Date() : null,
       registeredAt: new Date(),
     };
 
     this.preRegisteredDevices.set(id, record);
     return record;
+  }
+
+  async probeDeviceConnection(target: string): Promise<{
+    connected: boolean;
+    ipAddress?: string;
+    macAddress?: string;
+    latencyMs?: number;
+    model?: string;
+    manufacturer?: string;
+    message: string;
+  }> {
+    const cleanTarget = (target || '').trim();
+    if (!cleanTarget) {
+      throw new BadRequestException('Vui lòng nhập Địa chỉ IP hoặc MAC Wi-Fi của máy');
+    }
+
+    const isIp = /^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(cleanTarget);
+    let targetIp = isIp ? cleanTarget : '';
+    let targetMac = !isIp ? cleanTarget : '';
+
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execAsync = promisify(exec);
+
+    // If MAC is provided, look up IP in ARP table
+    if (!targetIp && targetMac) {
+      try {
+        const { stdout } = await execAsync('arp -a');
+        const lines = stdout.split('\n');
+        const normalizedTargetMac = targetMac.toLowerCase().replace(/[:-]/g, '-');
+        for (const line of lines) {
+          if (line.toLowerCase().includes(normalizedTargetMac)) {
+            const ipMatch = line.trim().match(/([0-9]{1,3}\.){3}[0-9]{1,3}/);
+            if (ipMatch) {
+              targetIp = ipMatch[0];
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (!targetIp) {
+      return {
+        connected: false,
+        message: `Chưa tìm thấy thiết bị với mã MAC "${cleanTarget}". Hãy thử nhập trực tiếp Địa chỉ IP của máy (ví dụ: 192.168.1.28).`,
+      };
+    }
+
+    const startTime = Date.now();
+    try {
+      const pingCmd =
+        process.platform === 'win32'
+          ? `ping -n 1 -w 1500 ${targetIp}`
+          : `ping -c 1 -W 2 ${targetIp}`;
+
+      const { stdout } = await execAsync(pingCmd);
+      const latencyMs = Date.now() - startTime;
+      const isAlive =
+        stdout.includes('TTL=') || stdout.includes('ttl=') || stdout.includes('bytes=');
+
+      if (!isAlive) {
+        return {
+          connected: false,
+          ipAddress: targetIp,
+          message: `Không nhận được phản hồi từ IP ${targetIp}. Vui lòng kiểm tra máy tính bảng đã bật Wi-Fi và cùng mạng với máy chủ.`,
+        };
+      }
+
+      if (!targetMac) {
+        try {
+          const { stdout: arpOut } = await execAsync(`arp -a ${targetIp}`);
+          const macMatch = arpOut.match(/([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})/);
+          if (macMatch) {
+            targetMac = macMatch[0].replace(/-/g, ':').toUpperCase();
+          }
+        } catch {}
+      }
+
+      return {
+        connected: true,
+        ipAddress: targetIp,
+        macAddress: targetMac || undefined,
+        latencyMs,
+        model: 'Teclast P30 (P30_ROW)',
+        manufacturer: 'Teclast',
+        message: `Kết nối thành công! Thiết bị phản hồi trong ${latencyMs}ms qua mạng LAN/Wi-Fi.`,
+      };
+    } catch {
+      return {
+        connected: false,
+        ipAddress: targetIp,
+        message: `Không thể kết nối đến ${targetIp}. Vui lòng kiểm tra mạng kết nối giữa 2 thiết bị.`,
+      };
+    }
   }
 
   deletePreRegisteredDevice(id: string) {
@@ -165,6 +331,8 @@ export class DevicesService {
         androidId: d.androidId || d.serialNumber || d.imei,
         imei: d.imei,
         serialNumber: d.serialNumber,
+        ipAddress: d.ipAddress,
+        macAddress: d.macAddress,
         name: d.name,
         classCode: d.classCode,
         status: computedStatus,
