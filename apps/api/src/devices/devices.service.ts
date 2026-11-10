@@ -320,6 +320,49 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  updatePreRegisteredDevice(
+    id: string,
+    input: {
+      name?: string;
+      classCode?: string;
+      ipAddress?: string;
+      macAddress?: string;
+      androidId?: string;
+      serialNumber?: string;
+      model?: string;
+    },
+  ) {
+    const dev = this.preRegisteredDevices.get(id);
+    if (!dev) {
+      throw new NotFoundException(`Không tìm thấy thiết bị với mã ${id}`);
+    }
+
+    if (input.name !== undefined && input.name.trim()) {
+      dev.name = input.name.trim();
+    }
+    if (input.classCode !== undefined && input.classCode.trim()) {
+      dev.classCode = input.classCode.trim();
+    }
+    if (input.ipAddress !== undefined) {
+      dev.ipAddress = input.ipAddress.trim() || undefined;
+    }
+    if (input.macAddress !== undefined) {
+      dev.macAddress = input.macAddress.trim() || undefined;
+    }
+    if (input.androidId !== undefined) {
+      dev.androidId = input.androidId.trim() || dev.androidId;
+    }
+    if (input.serialNumber !== undefined) {
+      dev.serialNumber = input.serialNumber.trim() || dev.serialNumber;
+    }
+    if (input.model !== undefined && input.model.trim()) {
+      dev.model = input.model.trim();
+    }
+
+    this.preRegisteredDevices.set(id, dev);
+    return dev;
+  }
+
   deletePreRegisteredDevice(id: string) {
     this.preRegisteredDevices.delete(id);
     return { success: true };

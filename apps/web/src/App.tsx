@@ -36,6 +36,7 @@ import {
   Pin,
   LogOut,
   Plus,
+  Pencil,
   Trash2,
   Radio,
   Battery,
@@ -481,6 +482,66 @@ function DevicesAndSessionControlView({
     }
   };
 
+  // Edit connected device modal
+  const [editingDevice, setEditingDevice] = useState<RealDeviceItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editClassCode, setEditClassCode] = useState('6A1');
+  const [editIpAddress, setEditIpAddress] = useState('');
+  const [editMacAddress, setEditMacAddress] = useState('');
+  const [editModel, setEditModel] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleOpenEditDevice = (device: RealDeviceItem) => {
+    setEditingDevice(device);
+    setEditName(device.name || '');
+    setEditClassCode(device.classCode || '6A1');
+    setEditIpAddress(device.ipAddress || '');
+    setEditMacAddress(device.macAddress || device.androidId || device.serialNumber || '');
+    setEditModel(device.model || 'Teclast P30 (P30_ROW)');
+    setEditError(null);
+  };
+
+  const handleSaveEditDevice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDevice) return;
+    if (!editName.trim()) {
+      setEditError('Tên thiết bị không được để trống');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/pre-register/${editingDevice.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          classCode: editClassCode,
+          ipAddress: editIpAddress.trim() || undefined,
+          macAddress: editMacAddress.trim() || undefined,
+          androidId: editMacAddress.trim() || undefined,
+          serialNumber: editMacAddress.trim() || undefined,
+          model: editModel.trim() || 'Teclast P30 (P30_ROW)',
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || 'Không thể lưu thay đổi thiết bị');
+      }
+
+      setEditingDevice(null);
+      await fetchDevices();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Lỗi kết nối máy chủ');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // Delete physical device
   const handleDeleteDevice = async (id: string, name: string) => {
     if (!window.confirm(`Xác nhận xóa máy "${name}" khỏi hệ thống?`)) return;
@@ -758,13 +819,23 @@ function DevicesAndSessionControlView({
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
                     <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleDeleteDevice(d.id, d.name)}
-                        title="Xóa máy"
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditDevice(d)}
+                          title="Chỉnh sửa tên và thông tin thiết bị"
+                          className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition inline-flex items-center gap-1"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDevice(d.id, d.name)}
+                          title="Xóa máy"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -892,6 +963,123 @@ function DevicesAndSessionControlView({
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {isSubmittingEnroll ? 'Đang lưu...' : 'Lưu thiết bị & Kích hoạt'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Connected Device Modal */}
+      {editingDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-indigo-600" /> Chỉnh sửa Thông tin Thiết bị đã kết nối
+              </h3>
+              <button
+                onClick={() => setEditingDevice(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditDevice} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên thiết bị quản lý (Vị trí bàn / Học sinh) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Ví dụ: Máy Bàn 01 (Teclast P30)"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Lớp học / Kho phân bổ
+                </label>
+                <select
+                  value={editClassCode}
+                  onChange={(e) => setEditClassCode(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                >
+                  <option value="6A1">Lớp 6A1</option>
+                  <option value="6A2">Lớp 6A2</option>
+                  <option value="7A1">Lớp 7A1</option>
+                  <option value="8A1">Lớp 8A1</option>
+                  <option value="KHO">Kho thiết bị dùng chung</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Địa chỉ IP (LAN / Wi-Fi)
+                  </label>
+                  <input
+                    type="text"
+                    value={editIpAddress}
+                    onChange={(e) => setEditIpAddress(e.target.value)}
+                    placeholder="192.168.1.28"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Địa chỉ MAC / Mã định danh
+                  </label>
+                  <input
+                    type="text"
+                    value={editMacAddress}
+                    onChange={(e) => setEditMacAddress(e.target.value)}
+                    placeholder="00:08:22:64:6D:79"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên dòng máy (Model)
+                </label>
+                <input
+                  type="text"
+                  value={editModel}
+                  onChange={(e) => setEditModel(e.target.value)}
+                  placeholder="Teclast P30 (P30_ROW)"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDevice(null)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {isSavingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               </div>
             </form>

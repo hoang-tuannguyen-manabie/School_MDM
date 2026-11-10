@@ -595,8 +595,9 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
       // Do not OS-suspend com.android.settings or launcher (Watchdog handles Settings via Home redirect)
       if (pkg === 'com.android.settings' || pkg === 'com.android.launcher3') continue;
 
+      // Always allow com.google.android.deskclock (Clock) to run in parallel alongside any Kiosk app
       const shouldAllow = this.activeKioskPackage
-        ? pkg === this.activeKioskPackage
+        ? pkg === this.activeKioskPackage || pkg === 'com.google.android.deskclock'
         : this.approvedPackages.has(pkg);
 
       if (shouldAllow) {
@@ -672,6 +673,120 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Runs a parallel classroom activity countdown timer on all connected tablets
+   * alongside whatever app (Canva, ChatGPT, Sheets, Chrome) is currently active.
+   */
+  async dispatchClassroomTimerEvent(params: {
+    action: 'START' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
+    title: string;
+    remainingSeconds?: number;
+    autoLockOnExpire?: boolean;
+    openClockAppOnTablet?: boolean;
+  }): Promise<{
+    ok: boolean;
+    affectedDevices: number;
+    locked?: boolean;
+  }> {
+    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+      (d) => d.status === 'device',
+    );
+    const ipDevice = activeDevices.find((d) =>
+      /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/.test(d.serial),
+    );
+    const targetDevices = ipDevice ? [ipDevice] : activeDevices.slice(0, 1);
+
+    const cleanTitle = (params.title || 'Hoạt động trên lớp').replace(/["`$]/g, '').trim();
+    const secs = Math.max(0, Math.floor(params.remainingSeconds ?? 0));
+    const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+    const ss = String(secs % 60).padStart(2, '0');
+
+    await Promise.all(
+      targetDevices.map(async (dev) => {
+        // Ensure Clock app is never suspended so it can run in parallel
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'cmd package unsuspend com.google.android.deskclock',
+        ]);
+
+        if (params.action === 'START') {
+          await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
+          // Start native Android Clock countdown timer in parallel (SKIP_UI keeps current app in foreground unless openClockAppOnTablet is true)
+          if (secs > 0) {
+            const skipUi = params.openClockAppOnTablet ? 'false' : 'true';
+            await this.execAdb([
+              '-s',
+              dev.serial,
+              'shell',
+              `am start -a android.intent.action.SET_TIMER --ei android.intent.extra.alarm.LENGTH ${secs} --es android.intent.extra.alarm.MESSAGE "${cleanTitle}" --ez android.intent.extra.alarm.SKIP_UI ${skipUi}`,
+            ]);
+          }
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `⏱️ Bắt đầu đếm ngược: ${cleanTitle}`,
+            'classroom_timer',
+            `Thời gian hoạt động: ${mm}:${ss}. Đồng hồ đang chạy song song với ứng dụng học tập.`,
+          ]);
+        } else if (params.action === 'UPDATE') {
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `⏱️ Còn ${mm}:${ss} — ${cleanTitle}`,
+            'classroom_timer',
+            `Thời gian còn lại cho hoạt động [${cleanTitle}]: ${mm}:${ss}`,
+          ]);
+        } else if (params.action === 'EXPIRE') {
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `⏰ ĐÃ HẾT GIỜ: ${cleanTitle}`,
+            'classroom_timer',
+            `Đã hết thời gian cho hoạt động [${cleanTitle}]. Các em dừng thao tác trên máy tính bảng!`,
+          ]);
+        }
+      }),
+    );
+
+    if (params.action === 'EXPIRE' && params.autoLockOnExpire) {
+      await this.setClassroomLock(true);
+      return {
+        ok: true,
+        affectedDevices: targetDevices.length,
+        locked: true,
+      };
+    }
+
+    return {
+      ok: true,
+      affectedDevices: targetDevices.length,
+      locked: this.isClassroomLocked,
+    };
+  }
+
+  /**
    * Continuous 2-second watchdog that enforces Screen Lock, Kiosk App Pinning, and Blocked Apps
    */
   private async runWatchdogCycle(): Promise<void> {
@@ -731,6 +846,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           if (
             fgPkg &&
             fgPkg !== this.activeKioskPackage &&
+            fgPkg !== 'com.google.android.deskclock' &&
             !fgPkg.includes('permissioncontroller') &&
             !fgPkg.includes('systemui')
           ) {

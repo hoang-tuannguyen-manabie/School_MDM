@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -113,6 +114,28 @@ export class DevicesController {
     };
   }
 
+  @Post('devices/classroom-timer')
+  @HttpCode(HttpStatus.OK)
+  async dispatchClassroomTimer(
+    @Body()
+    body: {
+      action: 'START' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
+      title: string;
+      remainingSeconds?: number;
+      autoLockOnExpire?: boolean;
+      openClockAppOnTablet?: boolean;
+    },
+  ) {
+    const result = await this.adbControlService.dispatchClassroomTimerEvent(body);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('mdm/agent/heartbeat')
   @HttpCode(HttpStatus.OK)
   async receiveAgentHeartbeat(
@@ -181,6 +204,30 @@ export class DevicesController {
     const list = this.devicesService.getClassroomDevices(classCode);
     return {
       data: list,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Patch('devices/pre-register/:id')
+  async updatePreRegisteredDevice(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      classCode?: string;
+      ipAddress?: string;
+      macAddress?: string;
+      androidId?: string;
+      serialNumber?: string;
+      model?: string;
+    },
+  ) {
+    const result = this.devicesService.updatePreRegisteredDevice(id, body);
+    return {
+      data: result,
       meta: {
         requestId: randomUUID(),
         timestamp: new Date().toISOString(),
