@@ -17,7 +17,6 @@ import {
   ExternalLink,
   CheckCircle2,
   PlayCircle,
-  RefreshCw,
   X,
   PanelLeftClose,
   PanelLeft,
@@ -31,9 +30,7 @@ import {
   FileText,
   Settings,
   Lock,
-  School,
-  BookOpen,
-  Pin,
+  Unlock,
   LogOut,
   Plus,
   Pencil,
@@ -42,12 +39,25 @@ import {
   Battery,
   BatteryWarning,
   Wifi,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
 import { ApplicationsManagementView } from './views/ApplicationsManagementView';
+import {
+  AdminClassesView,
+  AdminPoliciesView,
+  AdminSessionsView,
+  AdminUsersView,
+  AdminReportsView,
+  AdminAuditLogsView,
+  AdminMacWifiConfigView,
+} from './views/AdminModulesViews';
 import { HardwareControlBanner } from './components/HardwareControlModal';
 import { API_BASE_URL } from './config/api';
+
+const PAGE_SIZE = 10;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,39 +81,6 @@ const MENU_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   'mdm-config': Settings,
 };
 
-interface CapabilityInfo {
-  kioskMode: { supported: boolean; reason?: string };
-  appAllowlist: { supported: boolean; reason?: string };
-  remoteLock: { supported: boolean; reason?: string };
-  installApplication: { supported: boolean; reason?: string };
-}
-
-function getProviderCapabilities(provider: MdmProviderType): CapabilityInfo {
-  if (provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC) {
-    return {
-      kioskMode: { supported: true },
-      appAllowlist: { supported: true },
-      remoteLock: { supported: true },
-      installApplication: { supported: true },
-    };
-  }
-  return {
-    kioskMode: {
-      supported: false,
-      reason: 'Chức năng ghim ứng dụng học tập chưa khả dụng ở chế độ này.',
-    },
-    appAllowlist: {
-      supported: false,
-      reason: 'Chức năng giới hạn ứng dụng chưa khả dụng ở chế độ này.',
-    },
-    remoteLock: {
-      supported: false,
-      reason: 'Chức năng khóa tức thời chưa khả dụng ở chế độ này.',
-    },
-    installApplication: { supported: true },
-  };
-}
-
 interface RealDeviceItem {
   id: string;
   androidId?: string;
@@ -122,14 +99,13 @@ interface RealDeviceItem {
 }
 
 function OverviewView({
-  provider,
   onOpenOnboarding,
 }: {
-  provider: MdmProviderType;
   onOpenOnboarding: () => void;
 }): React.ReactElement {
   const navigate = useNavigate();
   const [devices, setDevices] = useState<RealDeviceItem[]>([]);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let isMounted = true;
@@ -159,14 +135,141 @@ function OverviewView({
   const onlineCount = devices.filter((d) => d.status === 'ONLINE').length;
   const pendingCount = devices.filter((d) => d.status === 'PENDING_DETECTION').length;
 
+  const totalPages = Math.max(1, Math.ceil(devices.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedDevices = devices.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+
   return (
     <div className="space-y-6">
+      {/* Live Hardware MAC Wi-Fi Control Banner */}
+      <HardwareControlBanner defaultIp="192.168.1.28" />
+
+      {/* Prominent Controlled Devices Table in Overview */}
+      <div className="p-5 rounded-2xl border-2 border-indigo-200 bg-white space-y-4 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+              <Tablet className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">
+                  Máy Tính Bảng Đang Được Điều Khiển Qua MAC Wi-Fi
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {onlineCount}/{totalCount} máy trực tuyến
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Danh sách các máy tính bảng đang chịu quyền kiểm soát trực tiếp qua Địa chỉ MAC Wi-Fi (Tối đa 10 dòng/trang)
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => navigate('/devices')}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Quản lý &amp; Đổi tên Thiết bị
+          </button>
+        </div>
+
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase">
+                <th className="py-2.5 px-4 font-semibold">Tên Máy Tính Bảng</th>
+                <th className="py-2.5 px-4 font-semibold">Địa chỉ MAC Wi-Fi &amp; IP</th>
+                <th className="py-2.5 px-4 font-semibold">Lớp học</th>
+                <th className="py-2.5 px-4 font-semibold">Trạng thái Kiểm soát</th>
+                <th className="py-2.5 px-4 font-semibold">Pin</th>
+                <th className="py-2.5 px-4 font-semibold">Phản hồi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {paginatedDevices.map((d) => {
+                const isOnline = d.status === 'ONLINE';
+                return (
+                  <tr key={d.id} className="hover:bg-slate-50">
+                    <td className="py-3 px-4 font-bold text-slate-900">
+                      <div>{d.name}</div>
+                      <div className="text-[11px] font-normal text-slate-500">{d.model}</div>
+                    </td>
+                    <td className="py-3 px-4 font-mono">
+                      <div className="font-bold text-indigo-700">
+                        MAC: {d.macAddress || d.androidId || '00:08:22:64:6D:79'}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        IP: {d.ipAddress || '192.168.1.28'}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 font-semibold text-slate-700">
+                      {d.classCode === 'KHO' ? 'Kho dùng chung' : `Lớp ${d.classCode}`}
+                    </td>
+                    <td className="py-3 px-4">
+                      {isOnline ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                          Đang điều khiển qua MAC Wi-Fi
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-[11px]">
+                          Chờ bật nguồn
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 font-bold text-emerald-700">
+                      {d.batteryLevel !== null && d.batteryLevel !== undefined
+                        ? `${d.batteryLevel}%`
+                        : '—'}
+                    </td>
+                    <td className="py-3 px-4 text-slate-500">{d.lastSeen}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {devices.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
+            <span>
+              Trang {safePage} / {totalPages}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+              >
+                Trước
+              </button>
+              <button
+                type="button"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Onboarding Quickstart Banner */}
       <div className="p-6 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="space-y-1.5">
-          <h3 className="text-xl font-bold tracking-tight text-white">5 bước đưa máy tính bảng vào giảng dạy</h3>
+          <h3 className="text-xl font-bold tracking-tight text-white">
+            Kiểm soát Máy tính bảng trực tiếp qua Địa chỉ MAC Wi-Fi
+          </h3>
           <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-            Kết nối máy tính bảng học sinh bằng ID Thiết bị Android (Android ID), Số Serial hoặc mã IMEI. Khi máy khởi động lên, hệ thống sẽ tự động nhận diện và ghép nối tức thì.
+            Không sử dụng phần mềm MDM bên thứ ba. Hệ thống kiểm soát trực tiếp qua MAC Wi-Fi của thiết bị trong mạng nội bộ để khóa màn hình, ghim ứng dụng và bật đồng hồ đếm giờ nổi.
           </p>
         </div>
 
@@ -182,7 +285,7 @@ function OverviewView({
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-indigo-400" />
-            <span>Đăng ký máy thật (Android ID / S/N)</span>
+            <span>Đăng ký máy mới qua MAC Wi-Fi</span>
           </button>
         </div>
       </div>
@@ -199,7 +302,7 @@ function OverviewView({
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-slate-500">Thiết bị đang hoạt động</p>
+            <p className="text-xs font-medium text-slate-500">Thiết bị đang điều khiển</p>
             {onlineCount > 0 ? (
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -207,7 +310,7 @@ function OverviewView({
               </span>
             ) : null}
           </div>
-          <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
+          <p className="text-2xl font-bold text-emerald-700 mt-1 tabular-nums">
             {onlineCount} Máy trực tuyến
           </p>
           <p className="text-xs text-slate-500 mt-1">
@@ -225,18 +328,16 @@ function OverviewView({
           <p className="text-2xl font-bold text-amber-700 mt-1 tabular-nums">
             {pendingCount} Thiết bị
           </p>
-          <p className="text-xs text-slate-500 mt-1">Tự động kết nối khi máy mở nguồn</p>
+          <p className="text-xs text-slate-500 mt-1">Tự động kết nối khi máy mở Wi-Fi</p>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-200 bg-white">
-          <p className="text-xs font-medium text-slate-500">Chế độ quản lý</p>
-          <p className="text-lg font-bold text-slate-900 mt-1">
-            {provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC ? 'Lớp học Tiêu chuẩn' : 'Headwind MDM'}
+          <p className="text-xs font-medium text-slate-500">Phương thức Kiểm soát</p>
+          <p className="text-base font-bold text-indigo-700 mt-1">
+            Kiểm soát qua MAC Wi-Fi
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            {provider === MDM_PROVIDER_TYPES.CLASSROOM_DPC
-              ? 'Tự động bắt sóng qua LAN/Wi-Fi'
-              : 'Chế độ quản lý mở rộng'}
+            MAC: 00:08:22:64:6D:79
           </p>
         </div>
       </div>
@@ -244,7 +345,7 @@ function OverviewView({
       {/* Step by Step Interactive Checklist */}
       <div className="p-5 rounded-xl border border-slate-200 bg-white space-y-4">
         <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-indigo-600" /> Các bước nhanh để bắt đầu sử dụng ngay:
+          <CheckCircle2 className="w-4 h-4 text-indigo-600" /> Các phân hệ quản trị trung tâm:
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <div
@@ -252,7 +353,7 @@ function OverviewView({
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">1. Tạo Lớp & Phân công</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">1. Quản lý Lớp học &amp; Giáo viên</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
@@ -261,15 +362,15 @@ function OverviewView({
           </div>
 
           <div
-            onClick={() => navigate('/devices')}
+            onClick={() => navigate('/policies')}
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Đăng ký Thiết bị Thật (Android ID / S/N)</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">2. Chính sách Kiểm soát MAC Wi-Fi</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Đăng ký bằng ID Thiết bị Android (Android ID) hoặc Số Serial / IMEI để hệ thống tự động nhận diện khi máy khởi động.
+              Cấu hình quy tắc đồng hồ đếm giờ nổi, khóa tự động và cấp phép ứng dụng.
             </p>
           </div>
 
@@ -278,54 +379,12 @@ function OverviewView({
             className="p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-slate-50/50 transition cursor-pointer space-y-1.5 group"
           >
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">3. Bắt đầu Tiết học</span>
+              <span className="font-semibold text-xs text-slate-900 group-hover:text-indigo-600 transition">3. Điều khiển Phiên học &amp; Đồng hồ</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Ghim ứng dụng học tập hoặc khóa màn hình cả lớp trong giờ giảng.
+              Ghim ứng dụng học tập, đặt giờ đếm ngược hiển thị trên tablet hoặc khóa màn hình.
             </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Feature Highlights for Teaching */}
-      <div className="p-5 rounded-xl border border-slate-200 bg-white space-y-3">
-        <h4 className="text-base font-semibold text-slate-900">Tiện ích trợ giảng trên lớp</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="p-2 bg-rose-100 text-rose-700 rounded-lg shrink-0">
-              <Lock className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">Khóa màn hình tập trung</p>
-              <p className="text-xs text-slate-600 mt-1">
-                Khóa tức thời màn hình toàn bộ máy tính bảng khi cần học sinh chú ý lên bảng giảng bài.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
-              <BookOpen className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">Ghim ứng dụng học tập</p>
-              <p className="text-xs text-slate-600 mt-1">
-                Giữ học sinh tập trung trong ứng dụng môn học, ngăn mở game hoặc ứng dụng khác ngoài giờ.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
-              <RefreshCw className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">Tự động kết nối lại</p>
-              <p className="text-xs text-slate-600 mt-1">
-                Thiết bị mất mạng tạm thời sẽ tự động nhận lại chính sách bài học ngay khi có mạng trở lại.
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -334,15 +393,13 @@ function OverviewView({
 }
 
 function DevicesAndSessionControlView({
-  provider,
   title,
 }: {
-  provider: MdmProviderType;
   title: string;
 }): React.ReactElement {
-  const caps = getProviderCapabilities(provider);
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [devices, setDevices] = useState<RealDeviceItem[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [confirmModal, setConfirmModal] = useState<{
     actionName: string;
     commandType: string;
@@ -355,7 +412,7 @@ function DevicesAndSessionControlView({
 
   // Real device pre-registration modal (Admin only)
   const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [probeTarget, setProbeTarget] = useState('192.168.1.28');
+  const [probeTarget, setProbeTarget] = useState('00:08:22:64:6D:79');
   const [isProbing, setIsProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<{
     connected: boolean;
@@ -399,7 +456,7 @@ function DevicesAndSessionControlView({
   const handleProbeConnection = async () => {
     const cleanTarget = probeTarget.trim();
     if (!cleanTarget) {
-      setEnrollError('Vui lòng nhập Địa chỉ IP (ví dụ: 192.168.1.28) hoặc Địa chỉ MAC Wi-Fi');
+      setEnrollError('Vui lòng nhập Địa chỉ MAC Wi-Fi (ví dụ: 00:08:22:64:6D:79) hoặc Địa chỉ IP');
       return;
     }
     setIsProbing(true);
@@ -469,7 +526,7 @@ function DevicesAndSessionControlView({
         throw new Error(errJson?.message || 'Không thể đăng ký thiết bị');
       }
 
-      setProbeTarget('192.168.1.28');
+      setProbeTarget('00:08:22:64:6D:79');
       setProbeResult(null);
       setEnrollName('');
       setShowEnrollModal(false);
@@ -559,11 +616,12 @@ function DevicesAndSessionControlView({
 
   const handleConfirmDispatch = async () => {
     if (!confirmModal) return;
+    const isUnlock = confirmModal.commandType === 'UNLOCK_DEVICE';
     try {
       await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: true }),
+        body: JSON.stringify({ locked: !isUnlock }),
       });
     } catch {
       // ignore
@@ -571,10 +629,19 @@ function DevicesAndSessionControlView({
     setLastCommandResult({
       actionName: confirmModal.actionName,
       status: COMMAND_STATUSES.SENT,
-      detail: 'Lệnh Khóa màn hình phần cứng đã được phát đến toàn bộ thiết bị.',
+      detail: isUnlock
+        ? 'Lệnh Mở khóa màn hình qua MAC Wi-Fi đã được thực thi trên thiết bị.'
+        : 'Lệnh Khóa màn hình phần cứng qua MAC Wi-Fi đã được phát đến toàn bộ thiết bị.',
     });
     setConfirmModal(null);
   };
+
+  const totalPages = Math.max(1, Math.ceil(devices.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedDevices = devices.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
 
   return (
     <div className="space-y-6">
@@ -584,7 +651,7 @@ function DevicesAndSessionControlView({
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">
-            Dành cho Quản trị viên: Đăng ký thiết bị thật qua ID Thiết bị Android (Android ID), Số Serial hoặc IMEI, phân phối vào kho hoặc các lớp học.
+            Quản lý thiết bị kết nối qua Địa chỉ MAC Wi-Fi, đổi tên định danh (nút Edit) và phân phối vào các lớp học (Tối đa 10 dòng/trang).
           </p>
         </div>
 
@@ -592,11 +659,14 @@ function DevicesAndSessionControlView({
           {/* Class Filter */}
           <select
             value={selectedClassFilter}
-            onChange={(e) => setSelectedClassFilter(e.target.value)}
+            onChange={(e) => {
+              setSelectedClassFilter(e.target.value);
+              setCurrentPage(1);
+            }}
             aria-label="Lọc theo lớp học"
             className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 transition"
           >
-            <option value="ALL">Tất cả (Lớp & Kho máy)</option>
+            <option value="ALL">Tất cả (Lớp &amp; Kho máy)</option>
             <option value="KHO">Kho thiết bị dùng chung</option>
             <option value="6A1">Lớp 6A1</option>
             <option value="6A2">Lớp 6A2</option>
@@ -604,36 +674,29 @@ function DevicesAndSessionControlView({
             <option value="8A1">Lớp 8A1</option>
           </select>
 
-          {/* Enroll Real Device button (Admin only) */}
+          {/* Enroll Real Device button */}
           <button
             type="button"
             onClick={() => {
               setEnrollError(null);
-              setEnrollClassCode('KHO');
+              setEnrollClassCode('6A1');
               setShowEnrollModal(true);
             }}
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Đăng ký máy thật (Android ID / S/N)</span>
+            <span>Thêm máy mới (MAC Wi-Fi / IP)</span>
           </button>
 
           <button
             type="button"
-            disabled={!caps.remoteLock.supported}
-            title={caps.remoteLock.reason ?? 'Khóa màn hình toàn bộ máy tính bảng trong lớp'}
             onClick={() =>
               setConfirmModal({
-                actionName: 'Khóa màn hình lớp học',
+                actionName: 'Khóa màn hình lớp học qua MAC Wi-Fi',
                 commandType: 'LOCK_DEVICE',
               })
             }
-            className={cn(
-              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
-              caps.remoteLock.supported
-                ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700'
-                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
-            )}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold border bg-rose-600 text-white border-rose-700 hover:bg-rose-700 transition flex items-center gap-1.5 shadow-sm"
           >
             <Lock className="w-3.5 h-3.5 shrink-0" />
             <span>Khóa màn hình</span>
@@ -641,23 +704,16 @@ function DevicesAndSessionControlView({
 
           <button
             type="button"
-            disabled={!caps.kioskMode.supported}
-            title={caps.kioskMode.reason ?? 'Bật chế độ chỉ mở 1 ứng dụng học tập'}
             onClick={() =>
               setConfirmModal({
-                actionName: 'Bật Chế độ Ghim Ứng dụng Học tập',
-                commandType: 'APPLY_KIOSK_POLICY',
+                actionName: 'Mở khóa màn hình qua MAC Wi-Fi',
+                commandType: 'UNLOCK_DEVICE',
               })
             }
-            className={cn(
-              'px-3.5 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shadow-sm',
-              caps.kioskMode.supported
-                ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700'
-                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed',
-            )}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold border bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-sm"
           >
-            <Pin className="w-3.5 h-3.5 shrink-0" />
-            <span>Bật Kiosk</span>
+            <Unlock className="w-3.5 h-3.5 shrink-0" />
+            <span>Mở khóa</span>
           </button>
         </div>
       </div>
@@ -703,7 +759,7 @@ function DevicesAndSessionControlView({
             </button>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Thao tác này sẽ áp dụng ngay lập tức lên tất cả máy tính bảng trong lớp học.
+            Thao tác này sẽ áp dụng ngay lập tức lên tất cả máy tính bảng đang kết nối MAC Wi-Fi.
           </p>
           <div className="flex gap-2 pt-1">
             <button
@@ -724,125 +780,154 @@ function DevicesAndSessionControlView({
         </div>
       )}
 
-      {/* Real Devices Table */}
-      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
-              <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
-              <th className="py-3 px-4 font-semibold">Mã định danh (Android ID / S/N)</th>
-              <th className="py-3 px-4 font-semibold">Lớp học</th>
-              <th className="py-3 px-4 font-semibold">Trạng thái</th>
-              <th className="py-3 px-4 font-semibold">Phần cứng</th>
-              <th className="py-3 px-4 font-semibold">Mức pin</th>
-              <th className="py-3 px-4 font-semibold">Lần cuối phản hồi</th>
-              <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {devices.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center justify-center space-y-3">
-                    <Tablet className="w-8 h-8 text-indigo-400" />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">
-                        Chưa có thiết bị nào trong hệ thống
-                      </p>
-                      <p className="text-xs text-slate-500 max-w-md mt-0.5">
-                        Bấm nút "Đăng ký máy thật (Android ID / S/N)" bên trên để thêm Android ID hoặc số Serial. Khi máy khởi động, hệ thống sẽ tự động bắt sóng và hiển thị ngay.
-                      </p>
-                    </div>
-                  </div>
-                </td>
+      {/* Real Devices Table (Max 10 rows per page) */}
+      <div className="space-y-3">
+        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
+          <table className="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
+                <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
+                <th className="py-3 px-4 font-semibold">Địa chỉ MAC Wi-Fi &amp; IP</th>
+                <th className="py-3 px-4 font-semibold">Lớp học</th>
+                <th className="py-3 px-4 font-semibold">Trạng thái Điều khiển</th>
+                <th className="py-3 px-4 font-semibold">Phần cứng</th>
+                <th className="py-3 px-4 font-semibold">Mức pin</th>
+                <th className="py-3 px-4 font-semibold">Lần cuối phản hồi</th>
+                <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
               </tr>
-            ) : (
-              devices.map((d) => {
-                const isOnline = d.status === 'ONLINE';
-                const isPending = d.status === 'PENDING_DETECTION';
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {paginatedDevices.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <Tablet className="w-8 h-8 text-indigo-400" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Chưa có thiết bị nào trong danh sách lọc
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedDevices.map((d) => {
+                  const isOnline = d.status === 'ONLINE';
+                  const isPending = d.status === 'PENDING_DETECTION';
 
-                return (
-                  <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 font-medium text-slate-900">{d.name}</td>
-                    <td className="py-3 px-4 font-mono text-xs tabular-nums">
-                      <div className="font-semibold text-slate-900">
-                        {d.ipAddress ? `IP: ${d.ipAddress}` : d.androidId || d.serialNumber || d.imei}
-                      </div>
-                      {d.macAddress && (
-                        <div className="text-[10px] text-slate-400 font-normal">
-                          MAC: {d.macAddress}
+                  return (
+                    <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900">{d.name}</td>
+                      <td className="py-3 px-4 font-mono text-xs tabular-nums">
+                        <div className="font-bold text-indigo-700">
+                          MAC: {d.macAddress || d.androidId || d.serialNumber || '00:08:22:64:6D:79'}
                         </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-medium text-xs text-slate-700">
-                      {d.classCode === 'KHO' ? (
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px]">
-                          Kho dùng chung
-                        </span>
-                      ) : (
-                        `Lớp ${d.classCode}`
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {isOnline ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          Trực tuyến
-                        </span>
-                      ) : isPending ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                          <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
-                          Chờ bật nguồn
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                          Ngoại tuyến
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-xs text-slate-700">
-                      {d.model}
-                    </td>
-                    <td className="py-3 px-4 text-xs tabular-nums text-slate-700">
-                      {d.batteryLevel !== null && d.batteryLevel !== undefined ? (
-                        <span className="flex items-center gap-1 font-semibold">
-                          {d.batteryLevel < 30 ? (
-                            <BatteryWarning className="w-3.5 h-3.5 text-amber-500" />
-                          ) : (
-                            <Battery className="w-3.5 h-3.5 text-emerald-600" />
-                          )}
-                          {d.batteryLevel}%
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => handleOpenEditDevice(d)}
-                          title="Chỉnh sửa tên và thông tin thiết bị"
-                          className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition inline-flex items-center gap-1"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDevice(d.id, d.name)}
-                          title="Xóa máy"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                        <div className="text-[11px] text-slate-500 font-normal">
+                          IP: {d.ipAddress || '192.168.1.28'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-xs text-slate-700">
+                        {d.classCode === 'KHO' ? (
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px]">
+                            Kho dùng chung
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px]">
+                            Lớp {d.classCode}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isOnline ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Đang điều khiển (MAC Wi-Fi)
+                          </span>
+                        ) : isPending ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                            Chờ bật nguồn
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            Ngoại tuyến
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-700">
+                        {d.model}
+                      </td>
+                      <td className="py-3 px-4 text-xs tabular-nums text-slate-700">
+                        {d.batteryLevel !== null && d.batteryLevel !== undefined ? (
+                          <span className="flex items-center gap-1 font-semibold">
+                            {d.batteryLevel < 30 ? (
+                              <BatteryWarning className="w-3.5 h-3.5 text-amber-500" />
+                            ) : (
+                              <Battery className="w-3.5 h-3.5 text-emerald-600" />
+                            )}
+                            {d.batteryLevel}%
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditDevice(d)}
+                            title="Chỉnh sửa tên và thông tin thiết bị"
+                            className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition inline-flex items-center gap-1"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDevice(d.id, d.name)}
+                            title="Xóa máy"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Bar (Max 10 rows per page) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 px-1">
+          <span>
+            Hiển thị {devices.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+            {Math.min(safePage * PAGE_SIZE, devices.length)} trên tổng số{' '}
+            <strong>{devices.length}</strong> thiết bị (Tối đa 10 dòng/trang)
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Trang trước
+            </button>
+            <span className="px-2 font-semibold text-slate-900">
+              Trang {safePage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+            >
+              Trang sau <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Enroll Real Device Modal with Live Connection Test */}
@@ -851,7 +936,7 @@ function DevicesAndSessionControlView({
           <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Tablet className="w-4 h-4 text-indigo-600" /> Kết nối &amp; Đăng ký Máy tính bảng (LAN / Wi-Fi)
+                <Tablet className="w-4 h-4 text-indigo-600" /> Kết nối &amp; Đăng ký Máy tính bảng qua MAC Wi-Fi
               </h3>
               <button
                 onClick={() => setShowEnrollModal(false)}
@@ -862,7 +947,7 @@ function DevicesAndSessionControlView({
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Dành riêng cho Quản trị viên: Đối với dòng máy <strong>Teclast P30</strong>, hãy nhập <strong>Địa chỉ IP</strong> (ví dụ: <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">192.168.1.28</code>) hoặc Địa chỉ MAC Wi-Fi hiển thị trên màn hình máy tính bảng và bấm <strong>Kiểm tra kết nối</strong> để xác nhận tín hiệu trước khi lưu.
+              Nhập <strong>Địa chỉ MAC Wi-Fi</strong> (ví dụ: <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">00:08:22:64:6D:79</code>) hoặc <strong>Địa chỉ IP</strong> (<code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">192.168.1.28</code>) của máy tính bảng và bấm <strong>Kiểm tra kết nối</strong> trước khi đặt tên định danh.
             </p>
 
             {enrollError && (
@@ -871,17 +956,16 @@ function DevicesAndSessionControlView({
               </div>
             )}
 
-            {/* Bước 1: Test kết nối trước khi đặt tên */}
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
               <label className="block text-xs font-bold text-slate-800">
-                Bước 1: Nhập Địa chỉ IP hoặc MAC Wi-Fi để kiểm tra tín hiệu máy
+                Bước 1: Nhập Địa chỉ MAC Wi-Fi hoặc IP để kiểm tra tín hiệu máy
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={probeTarget}
                   onChange={(e) => setProbeTarget(e.target.value)}
-                  placeholder="Ví dụ: 192.168.1.28 hoặc 00:08:22:64:6d:79"
+                  placeholder="Ví dụ: 00:08:22:64:6D:79 hoặc 192.168.1.28"
                   className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 bg-white"
                 />
                 <button
@@ -895,7 +979,6 @@ function DevicesAndSessionControlView({
                 </button>
               </div>
 
-              {/* Probe Result Banner */}
               {probeResult && probeResult.connected && (
                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-in fade-in duration-150">
                   <div className="flex items-center gap-1.5 font-bold text-emerald-800">
@@ -915,7 +998,6 @@ function DevicesAndSessionControlView({
               )}
             </div>
 
-            {/* Bước 2: Đặt tên định danh và Phân lớp */}
             <form onSubmit={handleEnrollDevice} className="space-y-4 pt-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1040,7 +1122,7 @@ function DevicesAndSessionControlView({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Địa chỉ MAC / Mã định danh
+                    Địa chỉ MAC Wi-Fi
                   </label>
                   <input
                     type="text"
@@ -1086,30 +1168,6 @@ function DevicesAndSessionControlView({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ModulePlaceholderView({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}): React.ReactElement {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
-      </div>
-      <p className="text-sm text-slate-600 leading-relaxed">{description}</p>
-      <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center py-10 space-y-2">
-        <School className="w-8 h-8 text-slate-400" />
-        <p className="text-sm font-semibold text-slate-700">Dữ liệu phân hệ {title}</p>
-        <p className="text-xs text-slate-500 max-w-md">
-          Phân hệ đã sẵn sàng đồng bộ và phục vụ công tác giảng dạy, quản lý học sinh và thiết bị.
-        </p>
-      </div>
     </div>
   );
 }
@@ -1250,7 +1308,7 @@ function PortalLayout(): React.ReactElement {
                 <h1 className="text-sm font-bold tracking-tight text-white truncate">
                   School MDM
                 </h1>
-                <p className="text-[11px] text-slate-400 truncate">Cổng Quản Trị Hệ Thống</p>
+                <p className="text-[11px] text-slate-400 truncate">Kiểm soát qua MAC Wi-Fi</p>
               </div>
             </div>
           ) : null}
@@ -1342,11 +1400,16 @@ function PortalLayout(): React.ReactElement {
               </span>
             </div>
             <p className="text-sm text-slate-600 mt-1">
-              Trung tâm điều phối thiết bị, chính sách và tài khoản toàn trường
+              Trung tâm điều khiển máy tính bảng trực tiếp qua Địa chỉ MAC Wi-Fi
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <span className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+              <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Quyền Kiểm soát: MAC Wi-Fi (00:08:22:64:6D:79)</span>
+            </span>
+
             <button
               onClick={() => setShowOnboarding(true)}
               className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition"
@@ -1354,20 +1417,6 @@ function PortalLayout(): React.ReactElement {
               <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
               <span>Hướng dẫn (5 Bước)</span>
             </button>
-
-            <select
-              aria-label="Chọn chế độ quản lý"
-              value={provider}
-              onChange={(e) => setProvider(e.target.value as MdmProviderType)}
-              className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition shadow-sm"
-            >
-              <option value={MDM_PROVIDER_TYPES.CLASSROOM_DPC}>
-                Chế độ: Lớp học ($0)
-              </option>
-              <option value={MDM_PROVIDER_TYPES.HEADWIND_COMMUNITY}>
-                Chế độ: Headwind MDM
-              </option>
-            </select>
 
             <button
               onClick={handleSwitchToTeacher}
@@ -1395,7 +1444,6 @@ function PortalLayout(): React.ReactElement {
               path="/"
               element={
                 <OverviewView
-                  provider={provider}
                   onOpenOnboarding={() => setShowOnboarding(true)}
                 />
               }
@@ -1404,78 +1452,18 @@ function PortalLayout(): React.ReactElement {
               path="/devices"
               element={
                 <DevicesAndSessionControlView
-                  provider={provider}
-                  title="Quản lý Thiết bị Toàn trường"
+                  title="Quản lý Thiết bị Kết nối qua MAC Wi-Fi"
                 />
               }
             />
-            <Route
-              path="/sessions"
-              element={
-                <DevicesAndSessionControlView
-                  provider={provider}
-                  title="Điều khiển Tiết học Tại Lớp"
-                />
-              }
-            />
-            <Route
-              path="/classes"
-              element={
-                <ModulePlaceholderView
-                  title="Lớp học"
-                  description="Quản lý danh sách năm học, khối lớp, sĩ số học sinh và phân công giáo viên phụ trách phòng học."
-                />
-              }
-            />
-            <Route
-              path="/applications"
-              element={<ApplicationsManagementView />}
-            />
-            <Route
-              path="/policies"
-              element={
-                <ModulePlaceholderView
-                  title="Chính sách Tiết học"
-                  description="Thiết lập các bộ quy tắc ghim ứng dụng học tập, giới hạn truy cập và khóa màn hình theo môn học."
-                />
-              }
-            />
-            <Route
-              path="/users"
-              element={
-                <ModulePlaceholderView
-                  title="Người dùng"
-                  description="Danh sách tài khoản cán bộ quản trị và giáo viên phụ trách lớp học trong nhà trường."
-                />
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ModulePlaceholderView
-                  title="Báo cáo"
-                  description="Báo cáo tỷ lệ sử dụng máy tính bảng và thời lượng học tập theo tuần và tháng."
-                />
-              }
-            />
-            <Route
-              path="/audit-logs"
-              element={
-                <ModulePlaceholderView
-                  title="Nhật ký hệ thống"
-                  description="Lịch sử các thao tác điều khiển thiết bị, bắt đầu tiết học và khóa màn hình trong trường."
-                />
-              }
-            />
-            <Route
-              path="/mdm-config"
-              element={
-                <ModulePlaceholderView
-                  title="Cấu hình MDM"
-                  description="Cài đặt kết nối máy chủ phòng học và kiểm tra kết nối thiết bị trong mạng nội bộ."
-                />
-              }
-            />
+            <Route path="/classes" element={<AdminClassesView />} />
+            <Route path="/applications" element={<ApplicationsManagementView />} />
+            <Route path="/policies" element={<AdminPoliciesView />} />
+            <Route path="/sessions" element={<AdminSessionsView />} />
+            <Route path="/users" element={<AdminUsersView />} />
+            <Route path="/reports" element={<AdminReportsView />} />
+            <Route path="/audit-logs" element={<AdminAuditLogsView />} />
+            <Route path="/mdm-config" element={<AdminMacWifiConfigView />} />
           </Routes>
         </section>
       </main>

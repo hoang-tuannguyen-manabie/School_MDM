@@ -89,8 +89,8 @@ export function ClassroomCountdownTimer({
         }
 
         const next = prev - 1;
-        // Send live milestone notifications to student tablets at 60s and 15s remaining
-        if (next === 60 || next === 15) {
+        // Update live countdown banner on tablet every 10 seconds and at 60s / 15s / 5s
+        if (next % 10 === 0 || next === 15 || next === 5) {
           void notifyTabletTimer('UPDATE', next);
         }
         return next;
@@ -118,9 +118,9 @@ export function ClassroomCountdownTimer({
     }
     setIsExpired(false);
     setIsRunning(true);
-    void notifyTabletTimer('START', startSecs, false);
+    void notifyTabletTimer('START', startSecs, true);
     onToast?.(
-      `⏱️ Đã bắt đầu đếm ngược "${activityTitle}" (${formatTime(startSecs)}) chạy song song với ứng dụng trên Tablet.`,
+      `⏱️ Đã hiển thị Đồng hồ đếm ngược "${activityTitle}" (${formatTime(startSecs)}) trực tiếp trên màn hình Tablet!`,
     );
   };
 
@@ -135,6 +135,7 @@ export function ClassroomCountdownTimer({
     const resetSecs = Math.max(1, customMinutes) * 60;
     setTotalSeconds(resetSecs);
     setRemainingSeconds(resetSecs);
+    void notifyTabletTimer('CANCEL', 0);
   };
 
   const handleAddOneMinute = () => {

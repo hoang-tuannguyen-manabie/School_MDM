@@ -712,14 +712,19 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
         if (params.action === 'START') {
           await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
-          // Start native Android Clock countdown timer in parallel (SKIP_UI keeps current app in foreground unless openClockAppOnTablet is true)
+          // Start native Android Clock countdown timer AND display it visibly in a floating window on the tablet screen
           if (secs > 0) {
-            const skipUi = params.openClockAppOnTablet ? 'false' : 'true';
             await this.execAdb([
               '-s',
               dev.serial,
               'shell',
-              `am start -a android.intent.action.SET_TIMER --ei android.intent.extra.alarm.LENGTH ${secs} --es android.intent.extra.alarm.MESSAGE "${cleanTitle}" --ez android.intent.extra.alarm.SKIP_UI ${skipUi}`,
+              [
+                'settings put global enable_freeform_support 1',
+                'settings put global force_resizable_activities 1',
+                `am start -n com.google.android.deskclock/com.android.deskclock.HandleSetApiCalls -a android.intent.action.SET_TIMER --ei android.intent.extra.alarm.LENGTH ${secs} --es android.intent.extra.alarm.MESSAGE "${cleanTitle}" --ez android.intent.extra.alarm.SKIP_UI false`,
+                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.HandleApiCalls -a android.intent.action.SHOW_TIMERS',
+                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
+              ].join('; '),
             ]);
           }
           await this.execAdb([
@@ -732,9 +737,16 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             '-S',
             'bigtext',
             '-t',
-            `⏱️ Bắt đầu đếm ngược: ${cleanTitle}`,
+            `⏱️ Đang đếm ngược: ${cleanTitle} (${mm}:${ss})`,
             'classroom_timer',
-            `Thời gian hoạt động: ${mm}:${ss}. Đồng hồ đang chạy song song với ứng dụng học tập.`,
+            `Thời gian hoạt động: ${mm}:${ss}. Đồng hồ đang hiển thị song song trên màn hình.`,
+          ]);
+        } else if (params.action === 'CANCEL') {
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'am force-stop com.google.android.deskclock',
           ]);
         } else if (params.action === 'UPDATE') {
           await this.execAdb([

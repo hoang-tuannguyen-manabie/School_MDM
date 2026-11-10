@@ -515,6 +515,12 @@ export class ApplicationsService implements OnModuleInit {
     if (!app) {
       throw new NotFoundException('Không tìm thấy ứng dụng để ghim');
     }
+    // Automatically mark as approved when teacher or admin pins the app
+    if (!app.isApproved) {
+      app.isApproved = true;
+      app.updatedAt = new Date().toISOString();
+      void this.adbControlService?.syncAppCatalogPermissions(this.listApplications());
+    }
     this.activeKioskAppId = appId;
     void this.adbControlService?.setKioskApp(app.packageName);
     return { activeKioskApp: { ...app } };

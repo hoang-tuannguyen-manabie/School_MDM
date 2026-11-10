@@ -19,16 +19,21 @@ import {
   Radio,
   Layers,
   RefreshCw,
-  EyeOff,
   Smartphone,
   Check,
   Pencil,
+  Wifi,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { ClassroomCountdownTimer } from '../components/ClassroomCountdownTimer';
 import { HardwareControlBanner } from '../components/HardwareControlModal';
+
+const PAGE_SIZE = 10;
 
 export interface ClassroomAppItem {
   id: string;
@@ -79,12 +84,21 @@ export function TeacherClassroomView({
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
+  // Pagination & filtering for concise Kiosk app pinning (max 10 rows/items)
+  const [appSearch, setAppSearch] = useState('');
+  const [appFilterMode, setAppFilterMode] = useState<'ALL' | 'APPROVED'>('ALL');
+  const [appPage, setAppPage] = useState(1);
+
+  // Pagination for controlled devices list (max 10 items)
+  const [devicePage, setDevicePage] = useState(1);
+
   // Modal: Select existing tablets from the school system
   const [showDeviceSelectorModal, setShowDeviceSelectorModal] = useState(false);
   const [allSchoolDevices, setAllSchoolDevices] = useState<ClassroomDeviceRecord[]>([]);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
   const [isLoadingSchoolDevices, setIsLoadingSchoolDevices] = useState(false);
   const [isSavingDeviceSelection, setIsSavingDeviceSelection] = useState(false);
+  const [selectorPage, setSelectorPage] = useState(1);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -148,6 +162,7 @@ export function TeacherClassroomView({
   const handleOpenDeviceSelector = async () => {
     setIsLoadingSchoolDevices(true);
     setShowDeviceSelectorModal(true);
+    setSelectorPage(1);
     try {
       const res = await fetch(`${API_BASE_URL}/devices/classroom-status`);
       if (res.ok) {
@@ -155,7 +170,6 @@ export function TeacherClassroomView({
         const list: ClassroomDeviceRecord[] = json.data || [];
         setAllSchoolDevices(list);
 
-        // Pre-select devices that are currently assigned to this class
         const currentIds = new Set(
           list.filter((d) => d.classCode === selectedClass).map((d) => d.id),
         );
@@ -168,7 +182,6 @@ export function TeacherClassroomView({
     }
   };
 
-  // Toggle selection of a device in the modal
   const handleToggleDeviceSelection = (id: string) => {
     setSelectedDeviceIds((prev) => {
       const next = new Set(prev);
@@ -181,7 +194,6 @@ export function TeacherClassroomView({
     });
   };
 
-  // Select all or deselect all
   const handleSelectAllDevices = () => {
     if (selectedDeviceIds.size === allSchoolDevices.length) {
       setSelectedDeviceIds(new Set());
@@ -190,13 +202,10 @@ export function TeacherClassroomView({
     }
   };
 
-  // Save the selection of tablets into this classroom
   const handleSaveDeviceSelection = async () => {
     setIsSavingDeviceSelection(true);
     try {
       const toAssign = Array.from(selectedDeviceIds);
-
-      // Devices previously assigned to this class that were unchecked -> set to 'KHO'
       const previouslyAssigned = allSchoolDevices
         .filter((d) => d.classCode === selectedClass)
         .map((d) => d.id);
@@ -234,7 +243,6 @@ export function TeacherClassroomView({
     }
   };
 
-  // Remove a single tablet from this classroom (returns to general pool)
   const handleRemoveDeviceFromClass = async (id: string, name: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/devices/batch-assign`, {
@@ -311,7 +319,7 @@ export function TeacherClassroomView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locked: true }),
       });
-      showToast('Đã phát lệnh KHÓA & TẮT MÀN HÌNH toàn bộ máy tính bảng trong phòng học.');
+      showToast('Đã phát lệnh KHÓA & TẮT MÀN HÌNH toàn bộ máy tính bảng qua MAC Wi-Fi.');
     } catch {
       showToast('Lỗi khi gửi lệnh khóa màn hình.');
     }
@@ -332,7 +340,7 @@ export function TeacherClassroomView({
     }
   };
 
-  // Apply or remove Kiosk mode for specific educational app
+  // Apply or remove Kiosk mode for any app (teacher can freely pin/unpin any app on the tablet)
   const handleApplyKiosk = async (targetApp: ClassroomAppItem | null) => {
     try {
       const res = await fetch(`${API_BASE_URL}/applications/kiosk`, {
@@ -345,10 +353,11 @@ export function TeacherClassroomView({
         const updated = (json.data?.activeKioskApp as ClassroomAppItem) ?? null;
         setActiveKioskApp(updated);
         setIsAllLocked(false);
+        await fetchClassroomApps();
         if (targetApp) {
-          showToast(`Đã gửi lệnh ghim ứng dụng [${targetApp.name}] lên màn hình tất cả máy tính bảng.`);
+          showToast(`Đã ghim ứng dụng [${targetApp.name}] lên màn hình máy tính bảng!`);
         } else {
-          showToast('Đã bỏ ghim ứng dụng. Toàn bộ ứng dụng được cấp phép đã sẵn sàng sử dụng.');
+          showToast('Đã bỏ ghim ứng dụng. Máy tính bảng trở về chế độ sử dụng tự do.');
         }
       }
     } catch {
@@ -375,9 +384,38 @@ export function TeacherClassroomView({
   };
 
   const onlineDevices = devices.filter((d) => d.status === 'ONLINE');
-  const pendingDevices = devices.filter((d) => d.status === 'PENDING_DETECTION');
-  const approvedApps = apps.filter((a) => a.isApproved);
-  const blockedApps = apps.filter((a) => !a.isApproved);
+
+  // Filter & paginate apps for concise Kiosk pinning (max 10 rows/items per page)
+  const filteredApps = apps.filter((app) => {
+    const matchesSearch =
+      app.name.toLowerCase().includes(appSearch.toLowerCase()) ||
+      app.packageName.toLowerCase().includes(appSearch.toLowerCase());
+    const matchesMode = appFilterMode === 'ALL' ? true : app.isApproved;
+    return matchesSearch && matchesMode;
+  });
+
+  const totalAppPages = Math.max(1, Math.ceil(filteredApps.length / PAGE_SIZE));
+  const safeAppPage = Math.min(appPage, totalAppPages);
+  const paginatedApps = filteredApps.slice(
+    (safeAppPage - 1) * PAGE_SIZE,
+    safeAppPage * PAGE_SIZE,
+  );
+
+  // Paginate controlled devices (max 10 rows per page)
+  const totalDevicePages = Math.max(1, Math.ceil(devices.length / PAGE_SIZE));
+  const safeDevicePage = Math.min(devicePage, totalDevicePages);
+  const paginatedDevices = devices.slice(
+    (safeDevicePage - 1) * PAGE_SIZE,
+    safeDevicePage * PAGE_SIZE,
+  );
+
+  // Paginate device selector modal list (max 10 rows per page)
+  const totalSelectorPages = Math.max(1, Math.ceil(allSchoolDevices.length / PAGE_SIZE));
+  const safeSelectorPage = Math.min(selectorPage, totalSelectorPages);
+  const paginatedSelectorDevices = allSchoolDevices.slice(
+    (safeSelectorPage - 1) * PAGE_SIZE,
+    safeSelectorPage * PAGE_SIZE,
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -393,10 +431,12 @@ export function TeacherClassroomView({
                 Cổng Giáo Viên Giảng Dạy
               </h1>
               <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
-                Lớp học Thông minh
+                Kiểm soát qua MAC Wi-Fi
               </span>
             </div>
-            <p className="text-xs text-slate-500">Quản lý và điều khiển máy tính bảng phòng học</p>
+            <p className="text-xs text-slate-500">
+              Điều khiển trực tiếp máy tính bảng học sinh qua địa chỉ MAC Wi-Fi &amp; mạng LAN
+            </p>
           </div>
         </div>
 
@@ -404,7 +444,10 @@ export function TeacherClassroomView({
           {/* Class selector */}
           <select
             value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
+            onChange={(e) => {
+              setSelectedClass(e.target.value);
+              setDevicePage(1);
+            }}
             aria-label="Chọn lớp giảng dạy"
             className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 transition"
           >
@@ -452,8 +495,256 @@ export function TeacherClassroomView({
           </div>
         )}
 
-        {/* Hardware ADB Control Status & 1-Time Pairing Banner */}
+        {/* Hardware MAC Wi-Fi & ADB Control Status Banner */}
         <HardwareControlBanner defaultIp="192.168.1.28" />
+
+        {/* PROMINENT CONTROLLED TABLETS SECTION (Moved right to top for crystal-clear visibility) */}
+        <div className="p-5 rounded-2xl bg-white border-2 border-indigo-200 shadow-xs space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Tablet className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-900">
+                    Máy Tính Bảng Đang Được Điều Khiển — Lớp {selectedClass}
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    {onlineDevices.length}/{devices.length} máy trực tuyến qua MAC Wi-Fi
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Hiển thị trực tiếp các máy tính bảng đang chịu quyền kiểm soát qua MAC Wi-Fi trong tiết học (tối đa 10 dòng/trang)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleOpenDeviceSelector}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Chọn máy vào lớp ({devices.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {devices.length === 0 ? (
+            <div className="p-8 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 flex flex-col items-center justify-center text-center space-y-3">
+              <Tablet className="w-8 h-8 text-indigo-500" />
+              <div className="space-y-1 max-w-md">
+                <h4 className="text-sm font-bold text-slate-900">
+                  Lớp {selectedClass} chưa có máy tính bảng nào được gán
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Bấm nút bên dưới để chọn máy tính bảng đã kết nối MAC Wi-Fi đưa vào lớp học này.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenDeviceSelector}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Chọn máy tính bảng vào lớp {selectedClass}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                      <th className="py-2.5 px-3.5 font-semibold">Tên Thiết bị &amp; Lớp</th>
+                      <th className="py-2.5 px-3.5 font-semibold">MAC Wi-Fi &amp; Địa chỉ IP</th>
+                      <th className="py-2.5 px-3.5 font-semibold">Trạng thái Kiểm soát</th>
+                      <th className="py-2.5 px-3.5 font-semibold">Pin</th>
+                      <th className="py-2.5 px-3.5 font-semibold">Chế độ trên màn hình</th>
+                      <th className="py-2.5 px-3.5 font-semibold text-right">Thao tác nhanh</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {paginatedDevices.map((device) => {
+                      const isOnline = device.status === 'ONLINE';
+                      const macDisplay =
+                        device.macAddress || device.androidId || device.serialNumber || '00:08:22:64:6D:79';
+                      const ipDisplay = device.ipAddress || '192.168.1.28';
+
+                      return (
+                        <tr
+                          key={device.id}
+                          className={cn(
+                            'transition-colors',
+                            isOnline ? 'bg-emerald-50/20 hover:bg-emerald-50/40' : 'hover:bg-slate-50',
+                          )}
+                        >
+                          <td className="py-3 px-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className={cn(
+                                  'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0',
+                                  isOnline
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-200 text-slate-700',
+                                )}
+                              >
+                                <Tablet className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-slate-900 text-xs">
+                                    {device.name}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                                    Lớp {device.classCode}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  {device.model || 'Teclast P30 (P30_ROW)'}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3.5 font-mono">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <Wifi className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span>MAC: {macDisplay}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              IP LAN: <strong className="text-slate-700">{ipDisplay}</strong>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3.5">
+                            {isOnline ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                  Đang điều khiển trực tiếp
+                                </span>
+                                <p className="text-[10px] text-slate-500 pl-1">{device.lastSeen}</p>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                                Chờ tín hiệu Wi-Fi
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3.5">
+                            {device.batteryLevel !== null && device.batteryLevel !== undefined ? (
+                              <div className="flex items-center gap-1 font-bold tabular-nums text-slate-800">
+                                {device.batteryLevel < 30 ? (
+                                  <BatteryWarning className="w-4 h-4 text-amber-500" />
+                                ) : (
+                                  <Battery className="w-4 h-4 text-emerald-600" />
+                                )}
+                                <span>{device.batteryLevel}%</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3.5">
+                            {isAllLocked ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-[11px]">
+                                <Lock className="w-3 h-3" /> Đang khóa màn hình
+                              </span>
+                            ) : activeKioskApp ? (
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold text-[11px]">
+                                <AppDeviceIcon
+                                  packageName={activeKioskApp.packageName}
+                                  name={activeKioskApp.name}
+                                  size="xs"
+                                />
+                                <span>Ghim: {activeKioskApp.name}</span>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px]">
+                                <Check className="w-3 h-3" /> Mở tự do ({apps.filter((a) => a.isApproved).length} app)
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={handleLockAll}
+                                title="Khóa màn hình thiết bị này"
+                                className="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Lock className="w-3 h-3" />
+                                <span>Khóa</span>
+                              </button>
+                              <button
+                                onClick={handleUnlockAll}
+                                title="Mở sáng màn hình thiết bị này"
+                                className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Unlock className="w-3 h-3" />
+                                <span>Mở</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditDevice(device)}
+                                title="Đổi tên thiết bị & sửa thông tin kết nối"
+                                className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold transition inline-flex items-center gap-1"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                onClick={() => handleRemoveDeviceFromClass(device.id, device.name)}
+                                title="Đưa về kho dùng chung"
+                                className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition"
+                              >
+                                <MinusCircle className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination for Controlled Devices (Max 10 rows) */}
+              {devices.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
+                  <span>
+                    Hiển thị {(safeDevicePage - 1) * PAGE_SIZE + 1}–
+                    {Math.min(safeDevicePage * PAGE_SIZE, devices.length)} trên tổng số{' '}
+                    <strong>{devices.length}</strong> máy tính bảng (Tối đa 10 dòng/trang)
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      disabled={safeDevicePage <= 1}
+                      onClick={() => setDevicePage((p) => Math.max(1, p - 1))}
+                      className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Trước
+                    </button>
+                    <span className="px-2 font-semibold">
+                      Trang {safeDevicePage}/{totalDevicePages}
+                    </span>
+                    <button
+                      disabled={safeDevicePage >= totalDevicePages}
+                      onClick={() => setDevicePage((p) => Math.min(totalDevicePages, p + 1))}
+                      className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+                    >
+                      Sau <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Classroom Live Control Dashboard */}
         <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-6">
@@ -489,7 +780,7 @@ export function TeacherClassroomView({
                   showToast(
                     isSessionActive
                       ? 'Đã kết thúc tiết học. Thiết bị được trả về trạng thái tự do.'
-                      : 'Đã bắt đầu tiết học mới. Áp dụng chính sách bài học.',
+                      : 'Đã bắt đầu tiết học mới. Áp dụng quyền kiểm soát qua MAC Wi-Fi.',
                   );
                 }}
                 className={cn(
@@ -515,7 +806,7 @@ export function TeacherClassroomView({
           {/* Quick Teaching Actions (1-Click Actions) */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-              Lệnh điều khiển tức thời trên lớp
+              Lệnh điều khiển tức thời qua MAC Wi-Fi
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Lock All */}
@@ -532,7 +823,7 @@ export function TeacherClassroomView({
                   <div className="flex items-center gap-1.5 font-bold text-xs text-rose-700">
                     <Lock className="w-4 h-4" /> Khóa màn hình cả lớp
                   </div>
-                  <p className="text-[11px] text-slate-500">Yêu cầu học sinh chú ý lên bảng</p>
+                  <p className="text-[11px] text-slate-500">Tắt màn hình yêu cầu chú ý lên bảng</p>
                 </div>
               </button>
 
@@ -545,7 +836,7 @@ export function TeacherClassroomView({
                   <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700">
                     <Unlock className="w-4 h-4" /> Mở khóa cho học sinh
                   </div>
-                  <p className="text-[11px] text-slate-500">Cho phép thao tác và làm bài</p>
+                  <p className="text-[11px] text-slate-500">Bật sáng màn hình để làm bài</p>
                 </div>
               </button>
 
@@ -565,7 +856,7 @@ export function TeacherClassroomView({
                       <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-800 truncate">
                         <Pin className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Bỏ ghim [{activeKioskApp.name}]
                       </div>
-                      <p className="text-[11px] text-slate-600 truncate">Bấm để cho phép dùng các app khác</p>
+                      <p className="text-[11px] text-slate-600 truncate">Bấm để hủy ghim ứng dụng</p>
                     </div>
                   </div>
                 </button>
@@ -575,7 +866,7 @@ export function TeacherClassroomView({
                     <div className="flex items-center gap-1.5 font-bold text-xs text-slate-700">
                       <Layers className="w-4 h-4 text-emerald-600" /> Không ghim (Mở tự do)
                     </div>
-                    <p className="text-[11px] text-slate-500">Học sinh dùng các app được duyệt</p>
+                    <p className="text-[11px] text-slate-500">Chọn app bên dưới để ghim tức thì</p>
                   </div>
                 </div>
               )}
@@ -589,349 +880,193 @@ export function TeacherClassroomView({
                   <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
                     <Send className="w-4 h-4 text-indigo-600" /> Gửi nhắc nhở cả lớp
                   </div>
-                  <p className="text-[11px] text-slate-500">Gửi thông điệp hiển thị trên tablet</p>
+                  <p className="text-[11px] text-slate-500">Hiện thông điệp lên màn hình tablet</p>
                 </div>
               </button>
             </div>
           </div>
 
-          {/* Parallel Classroom Activity Countdown Timer */}
+          {/* Parallel Classroom Activity Countdown Timer (Displays Floating Clock on Tablet!) */}
           <ClassroomCountdownTimer
             activeKioskApp={activeKioskApp}
             onExpireLockClassroom={() => setIsAllLocked(true)}
             onToast={showToast}
           />
 
-          {/* Educational Applications & Kiosk Selector */}
-          <div className="space-y-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
-                    <Smartphone className="w-4 h-4" />
-                  </span>
+          {/* CONCISE KIOSK APP PINNING SECTION (No descriptions, teacher can freely pin/unpin any app, max 10 items per page) */}
+          <div className="space-y-3 p-4 rounded-2xl bg-slate-50/70 border border-slate-200 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                  <Smartphone className="w-4 h-4" />
+                </span>
+                <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                    Ứng dụng trên Tablet & Chọn ứng dụng Ghim (Kiosk)
+                    Ghim / Bỏ ghim Ứng dụng trên Tablet ({filteredApps.length} App)
                   </h4>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Học sinh <strong>không cần thao tác gì</strong> trên máy tính bảng. Thầy/Cô chỉ cần bấm <strong>Ghim App</strong> để cố định duy nhất ứng dụng đó trong giờ học (Toán, Vẽ đồ họa, Tra cứu AI,...).
-                </p>
               </div>
 
-              {activeKioskApp && (
-                <button
-                  onClick={() => handleApplyKiosk(null)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Hủy ghim • Mở tự do</span>
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={appSearch}
+                    onChange={(e) => {
+                      setAppSearch(e.target.value);
+                      setAppPage(1);
+                    }}
+                    placeholder="Tìm nhanh tên app..."
+                    className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
+                  />
+                </div>
+
+                {/* Filter All vs Approved */}
+                <div className="inline-flex rounded-xl border border-slate-300 bg-white p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppFilterMode('ALL');
+                      setAppPage(1);
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg font-semibold transition',
+                      appFilterMode === 'ALL'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900',
+                    )}
+                  >
+                    Tất cả App ({apps.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppFilterMode('APPROVED');
+                      setAppPage(1);
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg font-semibold transition',
+                      appFilterMode === 'APPROVED'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900',
+                    )}
+                  >
+                    Được duyệt ({apps.filter((a) => a.isApproved).length})
+                  </button>
+                </div>
+
+                {activeKioskApp && (
+                  <button
+                    onClick={() => handleApplyKiosk(null)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition flex items-center gap-1 shadow-xs"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Bỏ ghim [{activeKioskApp.name}]</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Approved Apps Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
-              {approvedApps.map((app) => {
+            {/* Compact App Grid (Max 10 items per page, NO descriptions) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 pt-1">
+              {paginatedApps.map((app) => {
                 const isKiosked = activeKioskApp?.id === app.id;
                 return (
                   <div
                     key={app.id}
                     className={cn(
-                      'p-3.5 rounded-xl border transition flex flex-col justify-between gap-3 shadow-2xs',
+                      'p-2.5 rounded-xl border transition flex items-center justify-between gap-2.5 shadow-2xs',
                       isKiosked
-                        ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20'
-                        : 'bg-white border-slate-200 hover:border-slate-300',
+                        ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-500/20'
+                        : 'bg-white border-slate-200 hover:border-indigo-300',
                     )}
                   >
-                    <div>
-                      <div className="flex items-start gap-2.5 mb-2">
-                        <AppDeviceIcon
-                          packageName={app.packageName}
-                          name={app.name}
-                          size="md"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-[90px]" title={app.packageName}>
-                              {app.packageName}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <AppDeviceIcon
+                        packageName={app.packageName}
+                        name={app.name}
+                        size="sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h5
+                          className="text-xs font-bold text-slate-900 truncate"
+                          title={app.name}
+                        >
+                          {app.name}
+                        </h5>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {isKiosked ? (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded-full">
+                              Đang ghim
                             </span>
-                            {isKiosked ? (
-                              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
-                                <Pin className="w-2.5 h-2.5" /> Ghim
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                                <Check className="w-2.5 h-2.5" /> Cho phép
-                              </span>
-                            )}
-                          </div>
-                          <h5 className="text-xs font-bold text-slate-900 line-clamp-1 mt-1" title={app.name}>
-                            {app.name}
-                          </h5>
+                          ) : app.isApproved ? (
+                            <span className="text-[10px] font-semibold text-emerald-700">
+                              Cho phép
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-400">
+                              Tạm khóa
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
-                        {app.description || 'Ứng dụng phục vụ học tập'}
-                      </p>
                     </div>
 
                     <button
                       onClick={() => handleApplyKiosk(isKiosked ? null : app)}
                       className={cn(
-                        'w-full py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-2xs',
+                        'px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shrink-0',
                         isKiosked
-                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                          ? 'bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300'
                           : 'bg-indigo-600 hover:bg-indigo-700 text-white',
                       )}
                     >
-                      <Pin className="w-3.5 h-3.5" />
-                      <span>{isKiosked ? 'Bỏ ghim' : 'Ghim App này'}</span>
+                      <Pin className="w-3 h-3" />
+                      <span>{isKiosked ? 'Bỏ ghim' : 'Ghim'}</span>
                     </button>
                   </div>
                 );
               })}
             </div>
 
-            {/* Blocked Apps Notice with real icons */}
-            {blockedApps.length > 0 && (
-              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 font-semibold text-rose-700">
-                    <EyeOff className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                    <span>Khóa an toàn {blockedApps.length} ứng dụng:</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {blockedApps.map((bApp) => (
-                      <span
-                        key={bApp.id}
-                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-medium"
-                      >
-                        <AppDeviceIcon packageName={bApp.packageName} name={bApp.name} size="xs" />
-                        <span>{bApp.name}</span>
-                      </span>
-                    ))}
-                  </div>
+            {/* Pagination Bar (Max 10 apps per page) */}
+            {filteredApps.length > PAGE_SIZE && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 text-xs text-slate-600">
+                <span>
+                  Hiển thị {(safeAppPage - 1) * PAGE_SIZE + 1}–
+                  {Math.min(safeAppPage * PAGE_SIZE, filteredApps.length)} trên tổng số{' '}
+                  <strong>{filteredApps.length}</strong> ứng dụng (Tối đa 10 dòng/trang)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={safeAppPage <= 1}
+                    onClick={() => setAppPage((p) => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Trang trước
+                  </button>
+                  <span className="px-2 font-semibold text-slate-800">
+                    Trang {safeAppPage} / {totalAppPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safeAppPage >= totalAppPages}
+                    onClick={() => setAppPage((p) => Math.min(totalAppPages, p + 1))}
+                    className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+                  >
+                    Trang sau <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <span className="text-slate-400 italic">Quản lý tại Cổng Quản trị viên &gt; Kho Ứng dụng</span>
               </div>
             )}
           </div>
-
-          {/* Classroom Stat Counters */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Máy trong lớp học</span>
-              <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">
-                {devices.length} Máy tính bảng
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Đang trực tuyến</span>
-              <p className="text-xl font-bold text-emerald-700 tabular-nums mt-0.5">
-                {onlineDevices.length} Máy hoạt động
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">Chờ thiết bị bật nguồn</span>
-              <p className="text-xl font-bold text-amber-600 tabular-nums mt-0.5">
-                {pendingDevices.length} Máy
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <span className="text-[11px] text-slate-500">Ứng dụng đang ghim</span>
-                <p className="text-sm font-bold text-indigo-700 truncate mt-1">
-                  {activeKioskApp ? activeKioskApp.name : 'Không ghim (Tự do)'}
-                </p>
-              </div>
-              {activeKioskApp && (
-                <AppDeviceIcon
-                  packageName={activeKioskApp.packageName}
-                  name={activeKioskApp.name}
-                  size="sm"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Live Grid of Physical Student Tablets */}
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Danh Sách Máy Tính Bảng Trong Lớp {selectedClass}
-              </h3>
-              <p className="text-xs text-slate-500">
-                Chọn các máy hiện có trên hệ thống để đưa vào tiết học và theo dõi trạng thái tự động.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleOpenDeviceSelector}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
-              >
-                <Layers className="w-4 h-4" />
-                <span>Chọn máy vào lớp học ({devices.length})</span>
-              </button>
-            </div>
-          </div>
-
-          {devices.length === 0 ? (
-            <div className="p-12 rounded-2xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-center space-y-4 shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-xs">
-                <Tablet className="w-7 h-7" />
-              </div>
-              <div className="space-y-1.5 max-w-md">
-                <h4 className="text-sm font-bold text-slate-900">
-                  Lớp {selectedClass} chưa chọn máy tính bảng nào
-                </h4>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Thầy/Cô vui lòng bấm nút bên dưới để chọn các máy tính bảng hiện có trên hệ thống vào lớp học này.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-                <button
-                  onClick={handleOpenDeviceSelector}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-2 shadow-xs"
-                >
-                  <Layers className="w-4 h-4" />
-                  <span>Chọn máy tính bảng vào lớp</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {devices.map((device) => {
-                const isOnline = device.status === 'ONLINE';
-                const isPending = device.status === 'PENDING_DETECTION';
-
-                return (
-                  <div
-                    key={device.id}
-                    className={cn(
-                      'p-4 rounded-2xl border transition-all space-y-3 bg-white shadow-xs',
-                      isOnline
-                        ? 'border-emerald-200 hover:border-emerald-300'
-                        : isPending
-                          ? 'border-amber-200 bg-amber-50/15'
-                          : 'border-slate-200 bg-slate-50/40',
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-800 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200">
-                            {device.name}
-                          </span>
-                          <span className="text-[11px] font-semibold text-slate-500">
-                            {device.classCode}
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-900 truncate max-w-[150px]">
-                          {device.model || 'Android Tablet'}
-                        </h4>
-                        <p className="text-[11px] font-mono text-slate-500">
-                          {device.ipAddress ? `IP: ${device.ipAddress}` : device.androidId ? `ID: ${device.androidId}` : device.serialNumber ? `S/N: ${device.serialNumber}` : `IMEI: ${device.imei}`}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditDevice(device)}
-                          title="Chỉnh sửa tên và thông tin thiết bị"
-                          className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-[11px] font-semibold transition inline-flex items-center gap-1"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleRemoveDeviceFromClass(device.id, device.name)}
-                          title="Gỡ khỏi lớp học này"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition"
-                        >
-                          <MinusCircle className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-                      {/* Status indicator */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Trạng thái:</span>
-                        {isOnline ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Trực tuyến
-                          </span>
-                        ) : isPending ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
-                            Chờ bật nguồn
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                            Ngoại tuyến
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Battery level */}
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="text-slate-500">Mức pin:</span>
-                        {device.batteryLevel !== null && device.batteryLevel !== undefined ? (
-                          <div className="flex items-center gap-1 font-semibold tabular-nums text-slate-800">
-                            {device.batteryLevel < 30 ? (
-                              <BatteryWarning className="w-4 h-4 text-amber-500" />
-                            ) : (
-                              <Battery className="w-4 h-4 text-emerald-600" />
-                            )}
-                            <span>{device.batteryLevel}%</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Chưa phản hồi</span>
-                        )}
-                      </div>
-
-                      {/* Hardware / Detection Info */}
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="text-slate-500">Nhận diện:</span>
-                        <span className="font-medium text-slate-700 truncate max-w-[130px]" title={device.lastSeen}>
-                          {device.lastSeen}
-                        </span>
-                      </div>
-
-                      {/* Current Active App / Kiosk on Device */}
-                      <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-50">
-                        <span className="text-slate-500">Ứng dụng:</span>
-                        {activeKioskApp ? (
-                          <div className="flex items-center gap-1.5 font-semibold text-indigo-700 truncate max-w-[130px]" title={activeKioskApp.name}>
-                            <AppDeviceIcon packageName={activeKioskApp.packageName} name={activeKioskApp.name} size="xs" />
-                            <span className="truncate">{activeKioskApp.name}</span>
-                          </div>
-                        ) : (
-                          <span className="text-emerald-700 font-medium flex items-center gap-1 text-[11px]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Tự do các app
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </main>
 
-      {/* Modal: Select tablets from the school inventory */}
+      {/* Modal: Select tablets from the school inventory (Max 10 rows per page) */}
       {showDeviceSelectorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
@@ -941,7 +1076,7 @@ export function TeacherClassroomView({
                   <Layers className="w-5 h-5 text-indigo-600" /> Chọn Máy Tính Bảng Cho Lớp {selectedClass}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Chọn các máy tính bảng hiện có trên hệ thống để đưa vào quản lý tại lớp {selectedClass}.
+                  Chọn các máy tính bảng kết nối qua MAC Wi-Fi để đưa vào quản lý tại lớp {selectedClass}.
                 </p>
               </div>
               <button
@@ -966,7 +1101,7 @@ export function TeacherClassroomView({
                       Hệ thống trường học chưa có máy tính bảng nào
                     </h4>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
-                      Chưa có máy tính bảng nào được Quản trị viên đăng ký theo Android ID hoặc Số Serial. Vui lòng chuyển sang Cổng Quản trị viên để đăng ký thiết bị mới.
+                      Vui lòng chuyển sang Cổng Quản trị viên để đăng ký thiết bị mới qua MAC Wi-Fi.
                     </p>
                   </div>
                   <button
@@ -995,11 +1130,10 @@ export function TeacherClassroomView({
                     </button>
                   </div>
 
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-[350px] overflow-y-auto">
-                    {allSchoolDevices.map((dev) => {
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                    {paginatedSelectorDevices.map((dev) => {
                       const isChecked = selectedDeviceIds.has(dev.id);
                       const isOnline = dev.status === 'ONLINE';
-                      const isPending = dev.status === 'PENDING_DETECTION';
 
                       return (
                         <div
@@ -1025,8 +1159,8 @@ export function TeacherClassroomView({
                                   {dev.classCode === 'KHO' ? 'Kho máy' : `Lớp ${dev.classCode}`}
                                 </span>
                               </div>
-                              <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                                {dev.androidId ? `ID: ${dev.androidId}` : dev.serialNumber ? `S/N: ${dev.serialNumber}` : `IMEI: ${dev.imei}`} • {dev.model || 'Android Tablet'}
+                              <p className="text-[11px] font-mono text-slate-500 mt-0.5">
+                                MAC: {dev.macAddress || dev.androidId || '00:08:22:64:6D:79'} • IP: {dev.ipAddress || '192.168.1.28'}
                               </p>
                             </div>
                           </div>
@@ -1037,14 +1171,10 @@ export function TeacherClassroomView({
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                 Trực tuyến
                               </span>
-                            ) : isPending ? (
+                            ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                                 <Radio className="w-3 h-3 text-amber-500" />
                                 Chờ bật
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                Ngoại tuyến
                               </span>
                             )}
                           </div>
@@ -1052,6 +1182,32 @@ export function TeacherClassroomView({
                       );
                     })}
                   </div>
+
+                  {allSchoolDevices.length > PAGE_SIZE && (
+                    <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
+                      <span>
+                        Trang {safeSelectorPage}/{totalSelectorPages}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={safeSelectorPage <= 1}
+                          onClick={() => setSelectorPage((p) => Math.max(1, p - 1))}
+                          className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                        >
+                          Trước
+                        </button>
+                        <button
+                          type="button"
+                          disabled={safeSelectorPage >= totalSelectorPages}
+                          onClick={() => setSelectorPage((p) => Math.min(totalSelectorPages, p + 1))}
+                          className="px-2 py-1 rounded border border-slate-300 bg-white disabled:opacity-40"
+                        >
+                          Sau
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1193,7 +1349,7 @@ export function TeacherClassroomView({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Địa chỉ MAC / Mã định danh
+                    Địa chỉ MAC Wi-Fi
                   </label>
                   <input
                     type="text"

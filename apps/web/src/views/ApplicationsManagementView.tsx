@@ -9,10 +9,14 @@ import {
   Search,
   X,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { HardwareControlBanner } from '../components/HardwareControlModal';
+
+const PAGE_SIZE = 10;
 
 export interface ApplicationItem {
   id: string;
@@ -46,6 +50,7 @@ export function ApplicationsManagementView(): React.ReactElement {
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Add custom app modal
@@ -91,7 +96,7 @@ export function ApplicationsManagementView(): React.ReactElement {
     loadData();
   }, [loadData]);
 
-  // Sync live applications directly from connected Teclast P30 via ADB
+  // Sync live applications directly from connected Teclast P30 via MAC Wi-Fi / ADB
   const handleSyncFromTablet = async () => {
     setIsLoading(true);
     try {
@@ -103,6 +108,7 @@ export function ApplicationsManagementView(): React.ReactElement {
         const payload = json.data;
         if (payload?.apps && Array.isArray(payload.apps)) {
           setApps(payload.apps);
+          setCurrentPage(1);
         }
         if (payload?.syncedFromHardware) {
           showToast(
@@ -153,6 +159,7 @@ export function ApplicationsManagementView(): React.ReactElement {
       if (res.ok) {
         const json = await res.json();
         setActiveKioskApp(json.data?.activeKioskApp ?? null);
+        await loadData();
         if (appId && appName) {
           showToast(`Đã ghim ứng dụng [${appName}] thành công lên màn hình toàn bộ máy tính bảng.`);
         } else {
@@ -205,6 +212,13 @@ export function ApplicationsManagementView(): React.ReactElement {
     return matchesSearch && matchesCategory;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredApps.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedApps = filteredApps.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+
   const approvedCount = apps.filter((a) => a.isApproved).length;
   const blockedCount = apps.length - approvedCount;
 
@@ -226,11 +240,11 @@ export function ApplicationsManagementView(): React.ReactElement {
               <Layers className="w-5 h-5" />
             </span>
             <h3 className="text-xl font-bold tracking-tight">
-              Quản lý Ứng dụng Tablet (Teclast P30 & Android)
+              Danh mục Ứng dụng Tablet (Teclast P30 • Kiểm soát qua MAC Wi-Fi)
             </h3>
           </div>
           <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-            Học sinh <strong>không cần thao tác gì</strong> trên máy tính bảng. Toàn bộ danh mục ứng dụng thực tế trên tablet được quản lý tập trung tại đây: bật/tắt quyền dùng trong lớp hoặc ghim ứng dụng học tập độc quyền.
+            Danh sách lấy trực tiếp từ các ứng dụng đang có trên máy tính bảng Teclast P30. Hiển thị tối đa 10 dòng mỗi trang.
           </p>
         </div>
 
@@ -238,7 +252,7 @@ export function ApplicationsManagementView(): React.ReactElement {
           <button
             onClick={handleSyncFromTablet}
             disabled={isLoading}
-            title="Quét trực tiếp danh sách ứng dụng đang cài đặt trên máy tính bảng qua ADB"
+            title="Quét trực tiếp danh sách ứng dụng đang cài đặt trên máy tính bảng qua MAC Wi-Fi"
             className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -254,7 +268,7 @@ export function ApplicationsManagementView(): React.ReactElement {
         </div>
       </div>
 
-      {/* Hardware ADB Control Status & 1-Time Pairing Banner */}
+      {/* Hardware MAC Wi-Fi & ADB Control Status Banner */}
       <HardwareControlBanner defaultIp="192.168.1.28" />
 
       {/* Kiosk Status Alert (if active) */}
@@ -274,7 +288,7 @@ export function ApplicationsManagementView(): React.ReactElement {
                 </span>
               </p>
               <p className="text-xs text-indigo-700 mt-0.5">
-                Tất cả máy tính bảng trong lớp chỉ được phép hiển thị app này. Học sinh không thể thoát ra ngoài hoặc mở app khác.
+                Tất cả máy tính bảng trong lớp đang mở trực tiếp ứng dụng này qua MAC Wi-Fi.
               </p>
             </div>
           </div>
@@ -296,7 +310,7 @@ export function ApplicationsManagementView(): React.ReactElement {
                 Chế độ Lớp học Đa ứng dụng (Multi-App Allowed)
               </p>
               <p className="text-xs text-emerald-800 mt-0.5">
-                Học sinh được mở tự do các ứng dụng có trạng thái <strong className="text-emerald-900">Cho phép 🟢</strong>. Các ứng dụng giải trí/hệ thống bị khóa tự động.
+                Học sinh được mở tự do các ứng dụng có trạng thái <strong className="text-emerald-900">Được phép sử dụng</strong>.
               </p>
             </div>
           </div>
@@ -340,7 +354,10 @@ export function ApplicationsManagementView(): React.ReactElement {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Tìm ứng dụng (ChatGPT, Canva, Chrome...)"
             className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
           />
@@ -349,141 +366,168 @@ export function ApplicationsManagementView(): React.ReactElement {
         <div className="flex items-center gap-2">
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
           >
             <option value="ALL">Tất cả danh mục ({apps.length} App)</option>
             <option value="AI_ASSISTANT">Trợ lý AI (ChatGPT, Gemini, Assistant)</option>
-            <option value="DESIGN_EDUCATION">Thiết kế & Sáng tạo (Canva)</option>
-            <option value="EDUCATION">Học tập & Học liệu (Sheets, Drive, Keep, Books, Maps)</option>
-            <option value="BROWSER">Trình duyệt & Tìm kiếm (Chrome, Google)</option>
+            <option value="DESIGN_EDUCATION">Thiết kế &amp; Sáng tạo (Canva)</option>
+            <option value="EDUCATION">Học tập &amp; Học liệu (Sheets, Drive, Keep, Books, Maps)</option>
+            <option value="BROWSER">Trình duyệt &amp; Tìm kiếm (Chrome, Google)</option>
             <option value="TOOLS">Công cụ học tập (Máy tính, Tệp, Lịch, Đồng hồ, Ghi âm)</option>
-            <option value="COMMUNICATION">Liên lạc & Họp (Meet, Gmail, Danh bạ)</option>
+            <option value="COMMUNICATION">Liên lạc &amp; Họp (Meet, Gmail, Danh bạ)</option>
             <option value="MEDIA">Đa phương tiện (YouTube, Photos, Máy ảnh, TV, FM)</option>
-            <option value="GAMES_STORE">Trò chơi & Chợ App (CH Play, Play Games, Kids Space)</option>
-            <option value="SYSTEM">Hệ thống & Phần cứng (Cài đặt, Teclast, Device Info)</option>
+            <option value="GAMES_STORE">Trò chơi &amp; Chợ App (CH Play, Play Games, Kids Space)</option>
+            <option value="SYSTEM">Hệ thống &amp; Phần cứng (Cài đặt, Teclast, Device Info)</option>
           </select>
         </div>
       </div>
 
-      {/* Applications List Table */}
-      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
-              <th className="py-3.5 px-4 font-semibold">Tên Ứng dụng & Gói phần mềm</th>
-              <th className="py-3.5 px-4 font-semibold">Phân loại</th>
-              <th className="py-3.5 px-4 font-semibold">Phiên bản</th>
-              <th className="py-3.5 px-4 font-semibold text-center">Cho phép trong Tiết học</th>
-              <th className="py-3.5 px-4 font-semibold text-right">Chế độ Ghim (Kiosk)</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {filteredApps.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-500">
-                  <Layers className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-800">
-                    Không tìm thấy ứng dụng phù hợp
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Thử tìm với từ khóa khác hoặc bấm nút "Thêm Ứng dụng" bên trên.
-                  </p>
-                </td>
+      {/* Applications List Table (Max 10 rows per page) */}
+      <div className="space-y-3">
+        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
+          <table className="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
+                <th className="py-3 px-4 font-semibold">Tên Ứng dụng &amp; Mã gói</th>
+                <th className="py-3 px-4 font-semibold">Phân loại</th>
+                <th className="py-3 px-4 font-semibold">Phiên bản</th>
+                <th className="py-3 px-4 font-semibold text-center">Cho phép trong Tiết học</th>
+                <th className="py-3 px-4 font-semibold text-right">Chế độ Ghim (Kiosk)</th>
               </tr>
-            ) : (
-              filteredApps.map((app) => {
-                const isKiosk = activeKioskApp?.id === app.id;
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {paginatedApps.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
+                    <Layers className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-800">
+                      Không tìm thấy ứng dụng phù hợp
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                paginatedApps.map((app) => {
+                  const isKiosk = activeKioskApp?.id === app.id;
 
-                return (
-                  <tr
-                    key={app.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${
-                      isKiosk ? 'bg-indigo-50/40' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <AppDeviceIcon
-                          packageName={app.packageName}
-                          name={app.name}
-                          size="md"
-                        />
-                        <div>
-                          <p className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            {app.name}
-                            {isKiosk && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
-                                Đang Ghim
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                            {app.packageName}
-                          </p>
-                          {app.description && (
-                            <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
-                              {app.description}
+                  return (
+                    <tr
+                      key={app.id}
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isKiosk ? 'bg-indigo-50/40' : ''
+                      }`}
+                    >
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <AppDeviceIcon
+                            packageName={app.packageName}
+                            name={app.name}
+                            size="sm"
+                          />
+                          <div>
+                            <p className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                              {app.name}
+                              {isKiosk && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
+                                  Đang Ghim
+                                </span>
+                              )}
                             </p>
-                          )}
+                            <p className="text-[11px] font-mono text-slate-400">
+                              {app.packageName}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-3 px-4">
-                      <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                        {CATEGORY_LABELS[app.category] || app.category}
-                      </span>
-                    </td>
+                      <td className="py-2.5 px-4">
+                        <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                          {CATEGORY_LABELS[app.category] || app.category}
+                        </span>
+                      </td>
 
-                    <td className="py-3 px-4 font-mono text-xs text-slate-600">
-                      v{app.versionName}
-                    </td>
+                      <td className="py-2.5 px-4 font-mono text-xs text-slate-600">
+                        v{app.versionName}
+                      </td>
 
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => handleToggleApproval(app)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition border ${
-                          app.isApproved
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                            : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
-                        }`}
-                      >
-                        {app.isApproved ? (
-                          <>
-                            <Check className="w-3.5 h-3.5" /> Được phép sử dụng
-                          </>
+                      <td className="py-2.5 px-4 text-center">
+                        <button
+                          onClick={() => handleToggleApproval(app)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition border ${
+                            app.isApproved
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
+                          }`}
+                        >
+                          {app.isApproved ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" /> Được phép sử dụng
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3.5 h-3.5" /> Bị khóa trong lớp
+                            </>
+                          )}
+                        </button>
+                      </td>
+
+                      <td className="py-2.5 px-4 text-right">
+                        {isKiosk ? (
+                          <button
+                            onClick={() => handleToggleKiosk(null)}
+                            className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-semibold transition"
+                          >
+                            Bỏ ghim
+                          </button>
                         ) : (
-                          <>
-                            <Lock className="w-3.5 h-3.5" /> Bị khóa trong lớp
-                          </>
+                          <button
+                            onClick={() => handleToggleKiosk(app.id, app.name)}
+                            className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition inline-flex items-center gap-1"
+                          >
+                            <Pin className="w-3 h-3" /> Ghim App
+                          </button>
                         )}
-                      </button>
-                    </td>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                    <td className="py-3 px-4 text-right">
-                      {isKiosk ? (
-                        <button
-                          onClick={() => handleToggleKiosk(null)}
-                          className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-semibold transition"
-                        >
-                          Hủy ghim
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleToggleKiosk(app.id, app.name)}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition inline-flex items-center gap-1"
-                        >
-                          <Pin className="w-3 h-3" /> Ghim App này
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+        {/* Pagination Bar (Max 10 rows per page) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 px-1">
+          <span>
+            Hiển thị {filteredApps.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
+            {Math.min(safePage * PAGE_SIZE, filteredApps.length)} trên tổng số{' '}
+            <strong>{filteredApps.length}</strong> ứng dụng (Tối đa 10 dòng/trang)
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Trang trước
+            </button>
+            <span className="px-2.5 font-semibold text-slate-900">
+              Trang {safePage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 font-semibold"
+            >
+              Trang sau <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Add Custom Application Modal */}
@@ -501,10 +545,6 @@ export function ApplicationsManagementView(): React.ReactElement {
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Nếu trường học cài đặt thêm ứng dụng chuyên môn vào máy tính bảng (như phần mềm thi, từ điển, Scratch), hãy nhập Mã gói (Package Name) để quản lý quyền sử dụng tập trung.
-            </p>
 
             <form onSubmit={handleAddApp} className="space-y-3.5">
               <div>
@@ -544,25 +584,12 @@ export function ApplicationsManagementView(): React.ReactElement {
                   onChange={(e) => setNewCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                 >
-                  <option value="EDUCATION">Học tập & Giáo dục</option>
+                  <option value="EDUCATION">Học tập &amp; Giáo dục</option>
                   <option value="AI_ASSISTANT">Trợ lý AI</option>
                   <option value="DESIGN_EDUCATION">Thiết kế sáng tạo</option>
                   <option value="TOOLS">Công cụ học tập</option>
                   <option value="MEDIA">Đa phương tiện</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mô tả mục đích sử dụng
-                </label>
-                <input
-                  type="text"
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Ví dụ: Phục vụ tiết học thực hành Tin học"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
-                />
               </div>
 
               <div className="flex gap-2 justify-end pt-2">
