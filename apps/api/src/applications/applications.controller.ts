@@ -35,6 +35,13 @@ export class ApplicationsController {
     return this.wrap(this.applicationsService.listApplications());
   }
 
+  @Post('sync-tablet')
+  @HttpCode(HttpStatus.OK)
+  async syncAppsFromTablet() {
+    const result = await this.applicationsService.syncAppsFromConnectedTablet();
+    return this.wrap(result);
+  }
+
   @Get('kiosk')
   getActiveKiosk(): ApiResponse<{ activeKioskApp: ApplicationCatalogItemDto | null }> {
     return this.wrap({ activeKioskApp: this.applicationsService.getActiveKioskApp() });

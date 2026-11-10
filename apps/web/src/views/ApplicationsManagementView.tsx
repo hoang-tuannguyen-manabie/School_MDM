@@ -28,6 +28,18 @@ export interface ApplicationItem {
   updatedAt: string;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  AI_ASSISTANT: 'Trợ lý AI',
+  DESIGN_EDUCATION: 'Thiết kế & Sáng tạo',
+  EDUCATION: 'Học tập & Học liệu',
+  BROWSER: 'Trình duyệt & Tìm kiếm',
+  TOOLS: 'Công cụ học tập',
+  COMMUNICATION: 'Liên lạc & Họp',
+  MEDIA: 'Đa phương tiện (Media)',
+  GAMES_STORE: 'Trò chơi & Chợ App',
+  SYSTEM: 'Hệ thống & Phần cứng',
+};
+
 export function ApplicationsManagementView(): React.ReactElement {
   const [apps, setApps] = useState<ApplicationItem[]>([]);
   const [activeKioskApp, setActiveKioskApp] = useState<ApplicationItem | null>(null);
@@ -78,6 +90,36 @@ export function ApplicationsManagementView(): React.ReactElement {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Sync live applications directly from connected Teclast P30 via ADB
+  const handleSyncFromTablet = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/applications/sync-tablet`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const payload = json.data;
+        if (payload?.apps && Array.isArray(payload.apps)) {
+          setApps(payload.apps);
+        }
+        if (payload?.syncedFromHardware) {
+          showToast(
+            `Đã quét & đồng bộ trực tiếp ${payload.totalApps} ứng dụng đang có trên máy tính bảng (${payload.adbSerial})!`,
+          );
+        } else {
+          showToast(
+            `Đã tải danh mục ${payload?.totalApps ?? apps.length} ứng dụng chuẩn của máy Teclast P30.`,
+          );
+        }
+      }
+    } catch {
+      showToast('Không thể kết nối máy chủ để đồng bộ danh mục ứng dụng');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Toggle approval
   const handleToggleApproval = async (app: ApplicationItem) => {
@@ -194,11 +236,13 @@ export function ApplicationsManagementView(): React.ReactElement {
 
         <div className="flex items-center gap-2.5 shrink-0">
           <button
-            onClick={loadData}
-            title="Tải lại danh sách"
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition"
+            onClick={handleSyncFromTablet}
+            disabled={isLoading}
+            title="Quét trực tiếp danh sách ứng dụng đang cài đặt trên máy tính bảng qua ADB"
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Đồng bộ từ Tablet ({apps.length} App)</span>
           </button>
           <button
             onClick={() => setShowAddModal(true)}
@@ -308,13 +352,16 @@ export function ApplicationsManagementView(): React.ReactElement {
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
           >
-            <option value="ALL">Tất cả danh mục</option>
-            <option value="AI_ASSISTANT">Trợ lý AI</option>
-            <option value="DESIGN_EDUCATION">Thiết kế & Học tập</option>
-            <option value="BROWSER">Trình duyệt Web</option>
-            <option value="TOOLS">Công cụ & Học liệu</option>
-            <option value="MEDIA">Đa phương tiện (Media)</option>
-            <option value="SYSTEM">Hệ thống (System)</option>
+            <option value="ALL">Tất cả danh mục ({apps.length} App)</option>
+            <option value="AI_ASSISTANT">Trợ lý AI (ChatGPT, Gemini, Assistant)</option>
+            <option value="DESIGN_EDUCATION">Thiết kế & Sáng tạo (Canva)</option>
+            <option value="EDUCATION">Học tập & Học liệu (Sheets, Drive, Keep, Books, Maps)</option>
+            <option value="BROWSER">Trình duyệt & Tìm kiếm (Chrome, Google)</option>
+            <option value="TOOLS">Công cụ học tập (Máy tính, Tệp, Lịch, Đồng hồ, Ghi âm)</option>
+            <option value="COMMUNICATION">Liên lạc & Họp (Meet, Gmail, Danh bạ)</option>
+            <option value="MEDIA">Đa phương tiện (YouTube, Photos, Máy ảnh, TV, FM)</option>
+            <option value="GAMES_STORE">Trò chơi & Chợ App (CH Play, Play Games, Kids Space)</option>
+            <option value="SYSTEM">Hệ thống & Phần cứng (Cài đặt, Teclast, Device Info)</option>
           </select>
         </div>
       </div>
@@ -385,7 +432,7 @@ export function ApplicationsManagementView(): React.ReactElement {
 
                     <td className="py-3 px-4">
                       <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                        {app.category}
+                        {CATEGORY_LABELS[app.category] || app.category}
                       </span>
                     </td>
 

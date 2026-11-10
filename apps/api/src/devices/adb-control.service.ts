@@ -44,10 +44,36 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   ]);
 
   private readonly connectedDevices = new Map<string, AdbDeviceState>();
-  private readonly knownIpPorts = new Map<string, string>();
+  private readonly knownIpPorts = new Map<string, string>([['192.168.1.28', '35621']]);
+  private readonly knownPortsCachePath: string;
 
   constructor() {
     this.adbPath = this.resolveAdbBinaryPath();
+    this.knownPortsCachePath = path.resolve(path.dirname(this.adbPath), 'adb-known-ports.json');
+    this.loadKnownPortsFromDisk();
+  }
+
+  private loadKnownPortsFromDisk() {
+    try {
+      if (fs.existsSync(this.knownPortsCachePath)) {
+        const raw = JSON.parse(fs.readFileSync(this.knownPortsCachePath, 'utf8')) as Record<string, string>;
+        for (const [ip, port] of Object.entries(raw)) {
+          if (ip && port) this.knownIpPorts.set(ip, port);
+        }
+      }
+    } catch {
+      // Ignore cache read errors
+    }
+  }
+
+  private saveKnownPort(ip: string, port: string) {
+    this.knownIpPorts.set(ip, port);
+    try {
+      const obj = Object.fromEntries(this.knownIpPorts.entries());
+      fs.writeFileSync(this.knownPortsCachePath, JSON.stringify(obj, null, 2), 'utf8');
+    } catch {
+      // Ignore cache write errors
+    }
   }
 
   private resolveAdbBinaryPath(): string {
@@ -119,10 +145,17 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           if (match) {
             const ip = match[1];
             const port = match[2];
-            this.knownIpPorts.set(ip, port);
+            this.saveKnownPort(ip, port);
             await this.execAdb(['connect', `${ip}:${port}`], 3000);
           }
         }
+      }
+    }
+
+    // Also try reconnecting to any saved IP:port if not currently connected (e.g., when tablet screen is asleep and mDNS is paused)
+    if (this.connectedDevices.size === 0) {
+      for (const [ip, port] of this.knownIpPorts.entries()) {
+        await this.execAdb(['connect', `${ip}:${port}`], 2500);
       }
     }
 
@@ -440,6 +473,83 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Queries the connected physical tablet via ADB for all user-launchable applications
+   * (activities with ACTION_MAIN + CATEGORY_LAUNCHER) and their versionCodes.
+   */
+  async getInstalledTabletPackages(): Promise<{
+    connected: boolean;
+    serial: string | null;
+    packages: Array<{ packageName: string; versionCode: number }>;
+  }> {
+    await this.refreshDevices();
+    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+      (d) => d.status === 'device',
+    );
+    const targetDevice =
+      activeDevices.find((d) => d.ipAddress || /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/.test(d.serial)) ??
+      activeDevices[0];
+
+    if (!targetDevice) {
+      return { connected: false, serial: null, packages: [] };
+    }
+
+    const [launcherRes, versionRes] = await Promise.all([
+      this.execAdb(
+        [
+          '-s',
+          targetDevice.serial,
+          'shell',
+          'cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER',
+        ],
+        5000,
+      ),
+      this.execAdb(
+        ['-s', targetDevice.serial, 'shell', 'pm list packages --show-versioncode'],
+        5000,
+      ),
+    ]);
+
+    if (!launcherRes.ok || !launcherRes.stdout) {
+      return { connected: true, serial: targetDevice.serial, packages: [] };
+    }
+
+    const versionMap = new Map<string, number>();
+    if (versionRes.ok && versionRes.stdout) {
+      for (const line of versionRes.stdout.split(/\r?\n/)) {
+        const m = line.match(/package:([^\s]+)\s+versionCode:([0-9]+)/);
+        if (m && m[1] && m[2]) {
+          versionMap.set(m[1], parseInt(m[2], 10));
+        }
+      }
+    }
+
+    const seenPackages = new Set<string>();
+    const packages: Array<{ packageName: string; versionCode: number }> = [];
+
+    for (const rawLine of launcherRes.stdout.split(/\r?\n/)) {
+      const trimmed = rawLine.trim();
+      const match = trimmed.match(/^([a-zA-Z0-9_.]+)\/([^\s]+)$/);
+      if (match && match[1]) {
+        const pkg = match[1];
+        if (pkg === 'com.android.launcher3') continue;
+        if (!seenPackages.has(pkg)) {
+          seenPackages.add(pkg);
+          packages.push({
+            packageName: pkg,
+            versionCode: versionMap.get(pkg) ?? 1,
+          });
+        }
+      }
+    }
+
+    return {
+      connected: true,
+      serial: targetDevice.serial,
+      packages,
+    };
+  }
+
+  /**
    * Syncs approved and blocked package sets from ApplicationsService and immediately enforces on tablet
    */
   async syncAppCatalogPermissions(
@@ -463,8 +573,12 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     const activeDevices = Array.from(this.connectedDevices.values()).filter(
       (d) => d.status === 'device',
     );
+    const ipDevice = activeDevices.find((d) =>
+      /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/.test(d.serial),
+    );
+    const targetDevices = ipDevice ? [ipDevice] : activeDevices.slice(0, 1);
     await Promise.all(
-      activeDevices.map((dev) => this.applyPackagePoliciesOnDevice(dev.serial)),
+      targetDevices.map((dev) => this.applyPackagePoliciesOnDevice(dev.serial)),
     );
   }
 
@@ -474,36 +588,34 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
       ...this.blockedPackages,
     ]);
 
+    const toUnsuspend: string[] = [];
+    const toSuspend: string[] = [];
+
     for (const pkg of allManagedPackages) {
-      // Do not OS-suspend com.android.settings (Watchdog handles Settings via Home redirect)
-      if (pkg === 'com.android.settings') continue;
+      // Do not OS-suspend com.android.settings or launcher (Watchdog handles Settings via Home redirect)
+      if (pkg === 'com.android.settings' || pkg === 'com.android.launcher3') continue;
 
       const shouldAllow = this.activeKioskPackage
         ? pkg === this.activeKioskPackage
         : this.approvedPackages.has(pkg);
 
       if (shouldAllow) {
-        await this.execAdb([
-          '-s',
-          serial,
-          'shell',
-          'cmd',
-          'package',
-          'unsuspend',
-          pkg,
-        ]);
+        toUnsuspend.push(pkg);
       } else {
-        await this.execAdb([
-          '-s',
-          serial,
-          'shell',
-          'cmd',
-          'package',
-          'suspend',
-          pkg,
-        ]);
-        await this.execAdb(['-s', serial, 'shell', 'am', 'force-stop', pkg]);
+        toSuspend.push(pkg);
       }
+    }
+
+    const shellCommands: string[] = [];
+    if (toUnsuspend.length > 0) {
+      shellCommands.push(`cmd package unsuspend ${toUnsuspend.join(' ')}`);
+    }
+    if (toSuspend.length > 0) {
+      shellCommands.push(`cmd package suspend ${toSuspend.join(' ')}`);
+    }
+
+    if (shellCommands.length > 0) {
+      await this.execAdb(['-s', serial, 'shell', shellCommands.join('; ')], 8000);
     }
   }
 
