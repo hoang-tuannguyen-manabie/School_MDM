@@ -119,7 +119,7 @@ export class DevicesController {
   async dispatchClassroomTimer(
     @Body()
     body: {
-      action: 'START' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
+      action: 'START' | 'PAUSE' | 'RESUME' | 'ADD_MINUTE' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
       title: string;
       remainingSeconds?: number;
       autoLockOnExpire?: boolean;

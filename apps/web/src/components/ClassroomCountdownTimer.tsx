@@ -36,6 +36,7 @@ export function ClassroomCountdownTimer({
   const [totalSeconds, setTotalSeconds] = useState<number>(5 * 60);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(5 * 60);
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [isExpired, setIsExpired] = useState<boolean>(false);
   const [autoLockOnExpire, setAutoLockOnExpire] = useState<boolean>(true);
   const [syncWithTabletClock, setSyncWithTabletClock] = useState<boolean>(true);
@@ -43,7 +44,7 @@ export function ClassroomCountdownTimer({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const notifyTabletTimer = async (
-    action: 'START' | 'UPDATE' | 'EXPIRE' | 'CANCEL',
+    action: 'START' | 'PAUSE' | 'RESUME' | 'ADD_MINUTE' | 'UPDATE' | 'EXPIRE' | 'CANCEL',
     secs: number,
     openClockAppOnTablet = false,
   ) => {
@@ -75,6 +76,7 @@ export function ClassroomCountdownTimer({
       setRemainingSeconds((prev) => {
         if (prev <= 1) {
           setIsRunning(false);
+          setIsPaused(false);
           setIsExpired(true);
           void notifyTabletTimer('EXPIRE', 0);
           if (autoLockOnExpire && onExpireLockClassroom) {
@@ -103,7 +105,11 @@ export function ClassroomCountdownTimer({
   }, [isRunning, activityTitle, autoLockOnExpire, syncWithTabletClock]);
 
   const handleSelectPreset = (minutes: number) => {
+    if (isRunning || isPaused) {
+      void notifyTabletTimer('CANCEL', 0);
+    }
     setIsRunning(false);
+    setIsPaused(false);
     setIsExpired(false);
     setCustomMinutes(minutes);
     setTotalSeconds(minutes * 60);
@@ -118,24 +124,38 @@ export function ClassroomCountdownTimer({
     }
     setIsExpired(false);
     setIsRunning(true);
-    void notifyTabletTimer('START', startSecs, true);
-    onToast?.(
-      `⏱️ Đã hiển thị Đồng hồ đếm ngược "${activityTitle}" (${formatTime(startSecs)}) trực tiếp trên màn hình Tablet!`,
-    );
+
+    if (isPaused && remainingSeconds > 0) {
+      setIsPaused(false);
+      void notifyTabletTimer('RESUME', startSecs, true);
+      onToast?.(
+        `▶️ Đã tiếp tục đồng hồ đếm ngược "${activityTitle}" tại ${formatTime(startSecs)} trên màn hình Tablet!`,
+      );
+    } else {
+      setIsPaused(false);
+      void notifyTabletTimer('START', startSecs, true);
+      onToast?.(
+        `⏱️ Đã hiển thị Đồng hồ đếm ngược "${activityTitle}" (${formatTime(startSecs)}) trực tiếp trên màn hình Tablet!`,
+      );
+    }
   };
 
   const handlePause = () => {
     setIsRunning(false);
-    onToast?.('⏸️ Đã tạm dừng đồng hồ đếm ngược hoạt động.');
+    setIsPaused(true);
+    void notifyTabletTimer('PAUSE', remainingSeconds, false);
+    onToast?.('⏸️ Đã tạm dừng đồng hồ đếm ngược trên cả cổng Giáo viên và máy tính bảng.');
   };
 
   const handleReset = () => {
     setIsRunning(false);
+    setIsPaused(false);
     setIsExpired(false);
     const resetSecs = Math.max(1, customMinutes) * 60;
     setTotalSeconds(resetSecs);
     setRemainingSeconds(resetSecs);
     void notifyTabletTimer('CANCEL', 0);
+    onToast?.('⏹️ Đã đặt lại và xóa đồng hồ đếm ngược trên máy tính bảng.');
   };
 
   const handleAddOneMinute = () => {
@@ -143,16 +163,16 @@ export function ClassroomCountdownTimer({
     setRemainingSeconds(next);
     setTotalSeconds((prev) => Math.max(prev, next));
     setIsExpired(false);
-    if (isRunning) {
-      void notifyTabletTimer('UPDATE', next, false);
+    if (isRunning || isPaused) {
+      void notifyTabletTimer('ADD_MINUTE', next, false);
     }
-    onToast?.('➕ Đã cộng thêm 1 phút cho hoạt động của học sinh.');
+    onToast?.('➕ Đã cộng thêm 1 phút trực tiếp vào đồng hồ đang chạy của học sinh.');
   };
 
   const handleOpenClockOnTablet = () => {
     const secs = remainingSeconds > 0 ? remainingSeconds : customMinutes * 60;
     void notifyTabletTimer('START', secs, true);
-    onToast?.('⏰ Đã bật ứng dụng Đồng hồ hẹn giờ trực tiếp trên màn hình máy tính bảng.');
+    onToast?.('⏰ Đã đồng bộ lại ứng dụng Đồng hồ hẹn giờ trực tiếp trên màn hình máy tính bảng.');
   };
 
   const formatTime = (secs: number) => {
@@ -282,7 +302,9 @@ export function ClassroomCountdownTimer({
                   ? '⏰ ĐÃ HẾT THỜI GIAN'
                   : isRunning
                     ? '🟢 ĐANG ĐẾM NGƯỢC SONG SONG'
-                    : '⏱️ THỜI GIAN HOẠT ĐỘNG'}
+                    : isPaused
+                      ? '⏸️ ĐANG TẠM DỪNG TRÊN TABLET'
+                      : '⏱️ THỜI GIAN HOẠT ĐỘNG'}
               </span>
               <span className="text-xs text-slate-300 font-medium line-clamp-1 max-w-[140px]">
                 {activityTitle}
@@ -321,7 +343,7 @@ export function ClassroomCountdownTimer({
                 className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
               >
                 <Play className="w-3.5 h-3.5" />
-                <span>{remainingSeconds < totalSeconds && remainingSeconds > 0 ? 'Tiếp tục' : 'Bắt đầu'}</span>
+                <span>{isPaused && remainingSeconds > 0 ? 'Tiếp tục' : 'Bắt đầu'}</span>
               </button>
             ) : (
               <button

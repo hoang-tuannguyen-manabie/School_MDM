@@ -28,6 +28,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   private isClassroomLocked = false;
   private activeKioskPackage: string | null = null;
   private settingsGraceUntil = 0;
+  private timerGraceUntil = 0;
 
   private readonly approvedPackages = new Set<string>([
     'com.openai.chatgpt',
@@ -44,7 +45,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   ]);
 
   private readonly connectedDevices = new Map<string, AdbDeviceState>();
-  private readonly knownIpPorts = new Map<string, string>([['192.168.1.28', '35621']]);
+  private readonly knownIpPorts = new Map<string, string>([['192.168.1.28', '5555']]);
   private readonly knownPortsCachePath: string;
 
   constructor() {
@@ -677,7 +678,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
    * alongside whatever app (Canva, ChatGPT, Sheets, Chrome) is currently active.
    */
   async dispatchClassroomTimerEvent(params: {
-    action: 'START' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
+    action: 'START' | 'PAUSE' | 'RESUME' | 'ADD_MINUTE' | 'UPDATE' | 'EXPIRE' | 'CANCEL';
     title: string;
     remainingSeconds?: number;
     autoLockOnExpire?: boolean;
@@ -711,21 +712,28 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
         ]);
 
         if (params.action === 'START') {
+          this.timerGraceUntil = Date.now() + 4500;
           await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
-          // Start native Android Clock countdown timer AND display it visibly in a floating window on the tablet screen
+          // Clear any old timers first so there is NEVER more than 1 timer, then start & display in floating window
           if (secs > 0) {
-            await this.execAdb([
-              '-s',
-              dev.serial,
-              'shell',
+            await this.execAdb(
               [
-                'settings put global enable_freeform_support 1',
-                'settings put global force_resizable_activities 1',
-                `am start -n com.google.android.deskclock/com.android.deskclock.HandleSetApiCalls -a android.intent.action.SET_TIMER --ei android.intent.extra.alarm.LENGTH ${secs} --es android.intent.extra.alarm.MESSAGE "${cleanTitle}" --ez android.intent.extra.alarm.SKIP_UI false`,
-                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.HandleApiCalls -a android.intent.action.SHOW_TIMERS',
-                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
-              ].join('; '),
-            ]);
+                '-s',
+                dev.serial,
+                'shell',
+                [
+                  'settings put global enable_freeform_support 1',
+                  'settings put global force_resizable_activities 1',
+                  'pm clear com.google.android.deskclock',
+                  'sleep 0.4',
+                  `am start -n com.google.android.deskclock/com.android.deskclock.HandleSetApiCalls -a android.intent.action.SET_TIMER --ei android.intent.extra.alarm.LENGTH ${secs} --es android.intent.extra.alarm.MESSAGE "${cleanTitle}" --ez android.intent.extra.alarm.SKIP_UI false`,
+                  'sleep 0.6',
+                  'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.HandleApiCalls -a android.intent.action.SHOW_TIMERS',
+                  'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
+                ].join('; '),
+              ],
+              8000,
+            );
           }
           await this.execAdb([
             '-s',
@@ -741,12 +749,100 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             'classroom_timer',
             `Thời gian hoạt động: ${mm}:${ss}. Đồng hồ đang hiển thị song song trên màn hình.`,
           ]);
-        } else if (params.action === 'CANCEL') {
+        } else if (params.action === 'PAUSE') {
+          this.timerGraceUntil = Date.now() + 3000;
+          await this.execAdb(
+            [
+              '-s',
+              dev.serial,
+              'shell',
+              [
+                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
+                'sleep 0.3',
+                'input tap 684 415',
+              ].join('; '),
+            ],
+            5000,
+          );
           await this.execAdb([
             '-s',
             dev.serial,
             'shell',
-            'am force-stop com.google.android.deskclock',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `⏸️ Tạm dừng đếm ngược: ${cleanTitle} (${mm}:${ss})`,
+            'classroom_timer',
+            `Giáo viên đang tạm dừng đồng hồ tại ${mm}:${ss}.`,
+          ]);
+        } else if (params.action === 'RESUME') {
+          this.timerGraceUntil = Date.now() + 3000;
+          await this.execAdb(
+            [
+              '-s',
+              dev.serial,
+              'shell',
+              [
+                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
+                'sleep 0.3',
+                'input tap 684 415',
+              ].join('; '),
+            ],
+            5000,
+          );
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `▶️ Tiếp tục đếm ngược: ${cleanTitle} (${mm}:${ss})`,
+            'classroom_timer',
+            `Đồng hồ tiếp tục đếm ngược từ ${mm}:${ss}.`,
+          ]);
+        } else if (params.action === 'ADD_MINUTE') {
+          this.timerGraceUntil = Date.now() + 3000;
+          await this.execAdb(
+            [
+              '-s',
+              dev.serial,
+              'shell',
+              [
+                'am start --windowingMode 5 -n com.google.android.deskclock/com.android.deskclock.DeskClock',
+                'sleep 0.3',
+                'input tap 595 415',
+              ].join('; '),
+            ],
+            5000,
+          );
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd',
+            'notification',
+            'post',
+            '-S',
+            'bigtext',
+            '-t',
+            `➕ Đã cộng +1 phút: ${cleanTitle} (${mm}:${ss})`,
+            'classroom_timer',
+            `Thời gian hoạt động hiện tại: ${mm}:${ss}.`,
+          ]);
+        } else if (params.action === 'CANCEL') {
+          this.timerGraceUntil = Date.now() + 2500;
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'pm clear com.google.android.deskclock; am force-stop com.google.android.deskclock',
           ]);
         } else if (params.action === 'UPDATE') {
           await this.execAdb([
@@ -803,6 +899,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
    */
   private async runWatchdogCycle(): Promise<void> {
     if (this.isWatchdogRunning) return;
+    if (Date.now() < this.timerGraceUntil) return;
     this.isWatchdogRunning = true;
 
     try {
