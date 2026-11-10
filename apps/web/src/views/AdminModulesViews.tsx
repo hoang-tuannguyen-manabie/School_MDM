@@ -27,7 +27,6 @@ import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { ClassroomCountdownTimer } from '../components/ClassroomCountdownTimer';
-import { HardwareControlBanner } from '../components/HardwareControlModal';
 import type { ClassroomAppItem, ClassroomDeviceRecord } from './TeacherClassroomView';
 
 const PAGE_SIZE = 10;
@@ -804,8 +803,6 @@ export function AdminSessionsView(): React.ReactElement {
         </div>
       )}
 
-      <HardwareControlBanner defaultIp="192.168.1.28" />
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -1543,9 +1540,6 @@ export function AdminMacWifiConfigView(): React.ReactElement {
           Hệ thống chỉ sử dụng quyền kiểm soát trực tiếp qua Địa chỉ MAC Wi-Fi &amp; mạng nội bộ LAN (Đã loại bỏ hoàn toàn Headwind MDM).
         </p>
       </div>
-
-      {/* Live Hardware Connection Banner */}
-      <HardwareControlBanner defaultIp="192.168.1.28" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Card 1: MAC Wi-Fi Direct Probe & Verification */}

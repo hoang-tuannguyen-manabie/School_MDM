@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
-import { HardwareControlBanner } from '../components/HardwareControlModal';
 
 const PAGE_SIZE = 10;
 
@@ -267,9 +266,6 @@ export function ApplicationsManagementView(): React.ReactElement {
           </button>
         </div>
       </div>
-
-      {/* Hardware MAC Wi-Fi & ADB Control Status Banner */}
-      <HardwareControlBanner defaultIp="192.168.1.28" />
 
       {/* Kiosk Status Alert (if active) */}
       {activeKioskApp ? (

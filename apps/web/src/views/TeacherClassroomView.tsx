@@ -31,7 +31,6 @@ import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { ClassroomCountdownTimer } from '../components/ClassroomCountdownTimer';
-import { HardwareControlBanner } from '../components/HardwareControlModal';
 
 const PAGE_SIZE = 10;
 
@@ -494,9 +493,6 @@ export function TeacherClassroomView({
             </button>
           </div>
         )}
-
-        {/* Hardware MAC Wi-Fi & ADB Control Status Banner */}
-        <HardwareControlBanner defaultIp="192.168.1.28" />
 
         {/* PROMINENT CONTROLLED TABLETS SECTION (Moved right to top for crystal-clear visibility) */}
         <div className="p-5 rounded-2xl bg-white border-2 border-indigo-200 shadow-xs space-y-4">

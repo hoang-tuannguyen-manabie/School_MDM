@@ -54,7 +54,6 @@ import {
   AdminAuditLogsView,
   AdminMacWifiConfigView,
 } from './views/AdminModulesViews';
-import { HardwareControlBanner } from './components/HardwareControlModal';
 import { API_BASE_URL } from './config/api';
 
 const PAGE_SIZE = 10;
@@ -144,9 +143,6 @@ function OverviewView({
 
   return (
     <div className="space-y-6">
-      {/* Live Hardware MAC Wi-Fi Control Banner */}
-      <HardwareControlBanner defaultIp="192.168.1.28" />
-
       {/* Prominent Controlled Devices Table in Overview */}
       <div className="p-5 rounded-2xl border-2 border-indigo-200 bg-white space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -645,8 +641,6 @@ function DevicesAndSessionControlView({
 
   return (
     <div className="space-y-6">
-      <HardwareControlBanner defaultIp="192.168.1.28" />
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
