@@ -59,7 +59,10 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   ]);
 
   private readonly connectedDevices = new Map<string, AdbDeviceState>();
-  private readonly knownIpPorts = new Map<string, string>([['192.168.1.28', '5555']]);
+  private readonly knownIpPorts = new Map<string, string>([
+    ['192.168.20.32', '5555'],
+    ['192.168.1.28', '5555'],
+  ]);
   private readonly knownPortsCachePath: string;
 
   constructor() {
@@ -155,7 +158,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     if (mdnsRes.ok && mdnsRes.stdout) {
       const lines = mdnsRes.stdout.split(/\r?\n/);
       for (const line of lines) {
-        if (line.includes('_adb-tls-connect._tcp')) {
+        if (line.includes('_adb-tls-connect._tcp') || line.includes('_adb._tcp')) {
           const match = line.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3}):([0-9]{2,5})/);
           if (match) {
             const ip = match[1];
