@@ -34,7 +34,6 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   // Chrome / Web browsing restriction states
   private chromeRestrictionsEnabled = false;
   private chromeBlockNewTabs = true;
-  private lastChromeNotificationTime = 0;
   private chromeAllowedUrls: string[] = [
     'quizizz.com',
     'kahoot.it',
@@ -71,6 +70,70 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     this.adbPath = this.resolveAdbBinaryPath();
     this.knownPortsCachePath = path.resolve(path.dirname(this.adbPath), 'adb-known-ports.json');
     this.loadKnownPortsFromDisk();
+  }
+
+  /**
+   * Identifies file upload pickers, media selectors, and system intent dialogs
+   * that students need to upload or attach files during lessons (e.g. Scratch project files,
+   * Canva images, forms, documents). When active, MDM will not force-reload or jump back to Chrome.
+   */
+  isFileUploadOrSystemPackage(pkg: string | undefined): boolean {
+    if (!pkg) return false;
+    const lower = pkg.toLowerCase();
+
+    // Standard Android DocumentsUI & File Pickers
+    if (
+      lower === 'com.android.documentsui' ||
+      lower === 'com.google.android.documentsui' ||
+      lower === 'com.google.android.apps.nbu.files' ||
+      lower === 'com.android.filemanager' ||
+      lower === 'com.sprd.fileexplorer'
+    ) {
+      return true;
+    }
+
+    // Photo / Media Pickers & Downloads UI
+    if (
+      lower === 'com.android.photopicker' ||
+      lower === 'com.google.android.providers.media.module' ||
+      lower === 'com.android.providers.media.module' ||
+      lower === 'com.android.providers.media' ||
+      lower === 'com.sprd.providers.photos' ||
+      lower === 'com.android.gallery3d' ||
+      lower === 'com.google.android.apps.photos' ||
+      lower === 'com.android.providers.downloads.ui' ||
+      lower === 'com.android.providers.downloads' ||
+      lower === 'com.android.externalstorage' ||
+      lower === 'com.android.storagemanager'
+    ) {
+      return true;
+    }
+
+    // System Intent Resolver / App Chooser dialogs ("Mở bằng...", "Hoàn tất bằng...")
+    if (lower === 'android') {
+      return true;
+    }
+
+    // Runtime Permission Prompts ("Cho phép ứng dụng truy cập tệp...")
+    if (
+      lower.includes('permissioncontroller') ||
+      lower.includes('packageinstaller') ||
+      lower.includes('systemui')
+    ) {
+      return true;
+    }
+
+    // Camera for direct photo capture / file upload
+    if (lower === 'com.android.camera2' || lower === 'com.android.camera') {
+      return true;
+    }
+
+    // Generic file picker keywords
+    if (lower.includes('picker') || lower.includes('document')) {
+      return true;
+    }
+
+    return false;
   }
 
   private loadKnownPortsFromDisk() {
@@ -1162,13 +1225,13 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
             await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
           }
-          if (
-            fgPkg &&
-            fgPkg !== this.activeKioskPackage &&
-            fgPkg !== 'com.google.android.deskclock' &&
-            !fgPkg.includes('permissioncontroller') &&
-            !fgPkg.includes('systemui')
-          ) {
+
+          const isAllowedCompanion =
+            fgPkg === this.activeKioskPackage ||
+            fgPkg === 'com.google.android.deskclock' ||
+            this.isFileUploadOrSystemPackage(fgPkg);
+
+          if (fgPkg && !isAllowedCompanion) {
             await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
             if (this.activeKioskPackage === 'com.android.chrome' && this.activeLessonUrl) {
               await this.execAdb([
@@ -1194,7 +1257,11 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           (this.chromeRestrictionsEnabled || this.chromeBlockNewTabs) &&
           (fgPkg === 'com.google.android.googlequicksearchbox' || fgPkg === 'com.android.vending');
 
-        if (fgPkg && (this.blockedPackages.has(fgPkg) || isSearchAppBlocked)) {
+        if (
+          fgPkg &&
+          !this.isFileUploadOrSystemPackage(fgPkg) &&
+          (this.blockedPackages.has(fgPkg) || isSearchAppBlocked)
+        ) {
           if (fgPkg === 'com.android.settings' && Date.now() < this.settingsGraceUntil) {
             continue;
           }
@@ -1307,34 +1374,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
   private async enforceChromeRestrictionsOnDevice(serial: string): Promise<void> {
     try {
-      // 1. Intercept search typing: if keyboard is showing in Chrome, dismiss it immediately
-      const imeRes = await this.execAdb(
-        ['-s', serial, 'shell', 'dumpsys input_method | grep "mInputShown=true"'],
-        1500,
-      );
-      if (imeRes.ok && imeRes.stdout.includes('mInputShown=true')) {
-        // Dismiss keyboard & cancel search box immediately
-        await this.execAdb(
-          ['-s', serial, 'shell', 'input keyevent 4; sleep 0.05; input keyevent 111'],
-          1500,
-        );
-
-        const now = Date.now();
-        if (now - this.lastChromeNotificationTime > 10000) {
-          this.lastChromeNotificationTime = now;
-          await this.execAdb(
-            [
-              '-s',
-              serial,
-              'shell',
-              'cmd notification post -S bigtext -t "🔒 Đã khóa tìm kiếm & Tab mới" chrome_block "Giáo viên đã khóa tính năng tìm kiếm và tạo thẻ mới trên trình duyệt."',
-            ],
-            2000,
-          );
-        }
-      }
-
-      // 2. Query open Chrome tabs via DevTools Protocol
+      // 1. Query open Chrome tabs via DevTools Protocol
       await this.ensureChromeDevToolsForwarded(serial);
       interface CdpTab {
         id: string;
@@ -1357,6 +1397,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
       let activeApprovedTabId: string | null = null;
       const tabsToClose: string[] = [];
+      let currentTabNeedsRedirect = false;
 
       for (const tab of pageTabs) {
         const rawUrl = (tab.url || '').toLowerCase();
@@ -1396,18 +1437,26 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           if (isLessonMatch && !isNewTab) {
             activeApprovedTabId = tab.id;
           } else {
-            tabsToClose.push(tab.id);
+            if (pageTabs.length > 1) {
+              tabsToClose.push(tab.id);
+            } else {
+              currentTabNeedsRedirect = true;
+            }
           }
         } else {
           // No single active lesson, but restrictions or blockNewTabs active
           if (this.chromeBlockNewTabs && isNewTab) {
-            tabsToClose.push(tab.id);
+            if (pageTabs.length > 1) {
+              tabsToClose.push(tab.id);
+            }
           } else if (this.chromeAllowedUrls.length > 0 && tabHost) {
             const isAllowed = this.chromeAllowedUrls.some(
               (allowed) => tabHost.includes(allowed) || allowed.includes(tabHost),
             );
             if (!isAllowed) {
-              tabsToClose.push(tab.id);
+              if (pageTabs.length > 1) {
+                tabsToClose.push(tab.id);
+              }
             } else if (!activeApprovedTabId) {
               activeApprovedTabId = tab.id;
             }
@@ -1423,8 +1472,8 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
       // If we closed tabs or student opened switcher, bring the approved tab back to front
       if (activeApprovedTabId && tabsToClose.length > 0) {
         await this.callCdpEndpoint(`http://127.0.0.1:9222/json/activate/${activeApprovedTabId}`);
-      } else if (this.activeLessonUrl && pageTabs.length === 0) {
-        // All tabs were closed or not open yet: re-launch lesson
+      } else if (currentTabNeedsRedirect && this.activeLessonUrl) {
+        // Current sole tab navigated away to Google or unauthorized site -> redirect back to lesson
         await this.execAdb(
           [
             '-s',
