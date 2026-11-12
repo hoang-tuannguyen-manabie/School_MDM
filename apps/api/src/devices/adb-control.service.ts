@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -33,6 +34,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   // Chrome / Web browsing restriction states
   private chromeRestrictionsEnabled = false;
   private chromeBlockNewTabs = true;
+  private lastChromeNotificationTime = 0;
   private chromeAllowedUrls: string[] = [
     'quizizz.com',
     'kahoot.it',
@@ -117,7 +119,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
     this.watchdogTimer = setInterval(() => {
       void this.runWatchdogCycle();
-    }, 2000);
+    }, 1000);
 
     this.batterySyncTimer = setInterval(() => {
       void this.syncDeviceTelemetry();
@@ -957,6 +959,8 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             'shell',
             'cmd notification post -S bigtext -t "🔒 Đang kích hoạt Chế độ Duyệt Web An toàn" chrome_policy "Hệ thống đang khóa mở Tab mới & chỉ cho phép các trang web học tập do giáo viên chỉ định."',
           ]);
+          // Enforce immediately
+          await this.enforceChromeRestrictionsOnDevice(dev.serial);
         } else {
           await this.execAdb([
             '-s',
@@ -1051,6 +1055,10 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           'lesson_web',
           `Đã mở bài tập: ${pageTitle}. Đang áp dụng Chế độ Khóa Duyệt Web An Toàn.`,
         ]);
+        // Enforce CDP restrictions on the newly launched page
+        setTimeout(() => {
+          void this.enforceChromeRestrictionsOnDevice(dev.serial);
+        }, 800);
       }),
     );
 
@@ -1172,29 +1180,56 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             } else {
               await this.launchAppOnDevice(dev.serial, this.activeKioskPackage);
             }
+          } else if (
+            fgPkg === 'com.android.chrome' &&
+            (this.chromeRestrictionsEnabled || this.chromeBlockNewTabs)
+          ) {
+            await this.enforceChromeRestrictionsOnDevice(dev.serial);
           }
           continue;
         }
 
-        // ENFORCEMENT 3: Blocked Apps in Multi-App Mode
-        if (fgPkg && this.blockedPackages.has(fgPkg)) {
+        // ENFORCEMENT 3: Blocked Apps in Multi-App Mode & Google Search Lock
+        const isSearchAppBlocked =
+          (this.chromeRestrictionsEnabled || this.chromeBlockNewTabs) &&
+          (fgPkg === 'com.google.android.googlequicksearchbox' || fgPkg === 'com.android.vending');
+
+        if (fgPkg && (this.blockedPackages.has(fgPkg) || isSearchAppBlocked)) {
           if (fgPkg === 'com.android.settings' && Date.now() < this.settingsGraceUntil) {
             continue;
           }
           // Return tablet immediately to Home screen
-          await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '3']);
+          await this.execAdb(['-s', dev.serial, 'shell', 'input keyevent 4; input keyevent 3']);
           if (fgPkg !== 'com.android.settings') {
             await this.execAdb(['-s', dev.serial, 'shell', 'am', 'force-stop', fgPkg]);
+            if (!isSearchAppBlocked) {
+              await this.execAdb([
+                '-s',
+                dev.serial,
+                'shell',
+                'cmd',
+                'package',
+                'suspend',
+                fgPkg,
+              ]);
+            }
+          }
+          if (isSearchAppBlocked && this.activeLessonUrl) {
             await this.execAdb([
               '-s',
               dev.serial,
               'shell',
-              'cmd',
-              'package',
-              'suspend',
-              fgPkg,
+              `am start -a android.intent.action.VIEW -d "${this.activeLessonUrl}" -n com.android.chrome/com.google.android.apps.chrome.Main --ez org.chromium.chrome.browser.customtabs.EXTRA_INCOGNITO false`,
             ]);
           }
+        }
+
+        // ENFORCEMENT 4: Chrome Tab & Search Lock Enforcement
+        if (
+          fgPkg === 'com.android.chrome' &&
+          (this.chromeRestrictionsEnabled || this.chromeBlockNewTabs)
+        ) {
+          await this.enforceChromeRestrictionsOnDevice(dev.serial);
         }
       }
     } catch {
@@ -1220,6 +1255,176 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           dev.batteryLevel = parseInt(levelMatch[1], 10);
         }
       }
+    }
+  }
+
+  private fetchCdpJson<T>(url: string, timeoutMs = 800): Promise<T | null> {
+    return new Promise((resolve) => {
+      const req = http.get(url, { timeout: timeoutMs }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data) as T);
+          } catch {
+            resolve(null);
+          }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+    });
+  }
+
+  private callCdpEndpoint(url: string, timeoutMs = 800): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(url, { timeout: timeoutMs }, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  }
+
+  private async ensureChromeDevToolsForwarded(serial: string): Promise<boolean> {
+    try {
+      const res = await this.execAdb(
+        ['-s', serial, 'forward', 'tcp:9222', 'localabstract:chrome_devtools_remote'],
+        2000,
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  private async enforceChromeRestrictionsOnDevice(serial: string): Promise<void> {
+    try {
+      // 1. Intercept search typing: if keyboard is showing in Chrome, dismiss it immediately
+      const imeRes = await this.execAdb(
+        ['-s', serial, 'shell', 'dumpsys input_method | grep "mInputShown=true"'],
+        1500,
+      );
+      if (imeRes.ok && imeRes.stdout.includes('mInputShown=true')) {
+        // Dismiss keyboard & cancel search box immediately
+        await this.execAdb(
+          ['-s', serial, 'shell', 'input keyevent 4; sleep 0.05; input keyevent 111'],
+          1500,
+        );
+
+        const now = Date.now();
+        if (now - this.lastChromeNotificationTime > 10000) {
+          this.lastChromeNotificationTime = now;
+          await this.execAdb(
+            [
+              '-s',
+              serial,
+              'shell',
+              'cmd notification post -S bigtext -t "🔒 Đã khóa tìm kiếm & Tab mới" chrome_block "Giáo viên đã khóa tính năng tìm kiếm và tạo thẻ mới trên trình duyệt."',
+            ],
+            2000,
+          );
+        }
+      }
+
+      // 2. Query open Chrome tabs via DevTools Protocol
+      await this.ensureChromeDevToolsForwarded(serial);
+      interface CdpTab {
+        id: string;
+        title: string;
+        url: string;
+        type: string;
+      }
+      const tabs = await this.fetchCdpJson<CdpTab[]>('http://127.0.0.1:9222/json/list', 1000);
+      if (!tabs || !Array.isArray(tabs)) return;
+
+      const pageTabs = tabs.filter((t) => t.type === 'page');
+
+      // Determine allowed criteria
+      let lessonDomain = '';
+      if (this.activeLessonUrl) {
+        try {
+          lessonDomain = new URL(this.activeLessonUrl).hostname.replace(/^www\./, '').toLowerCase();
+        } catch {}
+      }
+
+      let activeApprovedTabId: string | null = null;
+      const tabsToClose: string[] = [];
+
+      for (const tab of pageTabs) {
+        const rawUrl = (tab.url || '').toLowerCase();
+        let tabHost = '';
+        try {
+          tabHost = new URL(rawUrl).hostname.replace(/^www\./, '').toLowerCase();
+        } catch {}
+
+        const isNewTab =
+          rawUrl.startsWith('chrome-native://') ||
+          rawUrl.startsWith('chrome://') ||
+          rawUrl === 'about:blank' ||
+          rawUrl.includes('google.com/search') ||
+          rawUrl === 'https://www.google.com/' ||
+          rawUrl === 'http://www.google.com/';
+
+        if (this.activeLessonUrl && lessonDomain) {
+          const isLessonMatch =
+            tabHost === lessonDomain ||
+            rawUrl.includes(lessonDomain) ||
+            this.chromeAllowedUrls.some(
+              (allowed) => tabHost.includes(allowed) || allowed.includes(tabHost),
+            );
+
+          if (isLessonMatch && !isNewTab) {
+            activeApprovedTabId = tab.id;
+          } else {
+            tabsToClose.push(tab.id);
+          }
+        } else {
+          // No single active lesson, but restrictions or blockNewTabs active
+          if (this.chromeBlockNewTabs && isNewTab) {
+            tabsToClose.push(tab.id);
+          } else if (this.chromeAllowedUrls.length > 0 && tabHost) {
+            const isAllowed = this.chromeAllowedUrls.some(
+              (allowed) => tabHost.includes(allowed) || allowed.includes(tabHost),
+            );
+            if (!isAllowed) {
+              tabsToClose.push(tab.id);
+            } else if (!activeApprovedTabId) {
+              activeApprovedTabId = tab.id;
+            }
+          }
+        }
+      }
+
+      // Close all unallowed tabs
+      for (const tabId of tabsToClose) {
+        await this.callCdpEndpoint(`http://127.0.0.1:9222/json/close/${tabId}`);
+      }
+
+      // If we closed tabs or student opened switcher, bring the approved tab back to front
+      if (activeApprovedTabId && tabsToClose.length > 0) {
+        await this.callCdpEndpoint(`http://127.0.0.1:9222/json/activate/${activeApprovedTabId}`);
+      } else if (this.activeLessonUrl && pageTabs.length === 0) {
+        // All tabs were closed or not open yet: re-launch lesson
+        await this.execAdb(
+          [
+            '-s',
+            serial,
+            'shell',
+            `am start -a android.intent.action.VIEW -d "${this.activeLessonUrl}" -n com.android.chrome/com.google.android.apps.chrome.Main --ez org.chromium.chrome.browser.customtabs.EXTRA_INCOGNITO false`,
+          ],
+          3000,
+        );
+      }
+    } catch {
+      // Ignore transient Chrome CDP inspection errors
     }
   }
 }

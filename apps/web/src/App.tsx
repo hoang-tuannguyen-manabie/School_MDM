@@ -1269,7 +1269,7 @@ function PortalLayout(): React.ReactElement {
   );
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900">
+    <div className="h-screen flex bg-slate-50 text-slate-900 overflow-hidden">
       <OnboardingGuide
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
@@ -1280,10 +1280,10 @@ function PortalLayout(): React.ReactElement {
         onNavigate={(path) => navigate(path)}
       />
 
-      {/* Collapsible Sidebar */}
+      {/* Collapsible Fixed Sidebar */}
       <aside
         className={cn(
-          'bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out shrink-0 select-none',
+          'h-full bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800 transition-all duration-300 ease-in-out shrink-0 select-none z-20',
           isSidebarCollapsed ? 'w-20' : 'w-64',
         )}
       >
@@ -1382,7 +1382,7 @@ function PortalLayout(): React.ReactElement {
         </div>
       </aside>
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 h-full p-8 overflow-y-auto min-w-0 max-w-full">
         <header className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
             <div className="flex items-center gap-2.5">
