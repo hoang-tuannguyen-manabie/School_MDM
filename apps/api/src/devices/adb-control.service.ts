@@ -493,24 +493,13 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '223']);
           dev.isScreenAwake = false;
         } else {
+          // 1. Wake screen (KEYCODE_WAKEUP)
           await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
+          // 2. Dismiss non-secure lockscreen, or smoothly bring up PIN/password entry keypad
           await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
-          await this.execAdb([
-            '-s',
-            dev.serial,
-            'shell',
-            'input',
-            'swipe',
-            '500',
-            '1100',
-            '500',
-            '300',
-            '200',
-          ]);
           dev.isScreenAwake = true;
-          if (this.activeKioskPackage) {
-            await this.launchAppOnDevice(dev.serial, this.activeKioskPackage);
-          }
+          // Note: Do NOT execute hardcoded 'input swipe' here as swiping through the keypad taps buttons and corrupts PIN entry!
+          // If kiosk mode is active, the watchdog will smoothly launch the kiosk app as soon as the user unlocks the screen.
         }
       }),
     );
@@ -543,8 +532,24 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
         if (packageName) {
           await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
           await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
-          await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
-          await this.launchAppOnDevice(dev.serial, packageName);
+          // Check if keyguard is showing before launching app or collapsing statusbar
+          const checkRes = await this.execAdb(
+            [
+              '-s',
+              dev.serial,
+              'shell',
+              'dumpsys window policy | grep "showing="; dumpsys trust | grep "deviceLocked="',
+            ],
+            2000,
+          );
+          const isLocked =
+            checkRes.ok &&
+            (checkRes.stdout.includes('showing=true') ||
+              checkRes.stdout.includes('deviceLocked=1'));
+          if (!isLocked) {
+            await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
+            await this.launchAppOnDevice(dev.serial, packageName);
+          }
         }
       }),
     );
@@ -1089,7 +1094,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           '-s',
           dev.serial,
           'shell',
-          'input keyevent 224; wm dismiss-keyguard; cmd statusbar collapse',
+          'input keyevent 224; wm dismiss-keyguard',
         ]);
         await this.execAdb([
           '-s',
@@ -1182,13 +1187,13 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
       );
 
       for (const dev of activeDevices) {
-        // 1. Inspect window & power state in a single fast shell call
+        // 1. Inspect window, power, and lockscreen state in a single fast shell call
         const stateRes = await this.execAdb(
           [
             '-s',
             dev.serial,
             'shell',
-            'dumpsys window displays | grep -E "mCurrentFocus|mFocusedApp"; dumpsys power | grep "mWakefulness="',
+            'dumpsys window displays | grep -E "mCurrentFocus|mFocusedApp"; dumpsys power | grep "mWakefulness="; dumpsys window policy | grep "showing="; dumpsys trust | grep "deviceLocked="',
           ],
           2500,
         );
@@ -1198,6 +1203,13 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
         const isAwake = output.includes('mWakefulness=Awake');
         dev.isScreenAwake = isAwake;
+
+        // Detect if the tablet is currently locked (showing Keyguard, lockscreen, PIN/password keypad, or NotificationShade)
+        const isKeyguardShowing =
+          output.includes('showing=true') ||
+          output.includes('deviceLocked=1') ||
+          output.includes('NotificationShade') ||
+          output.includes('KeyguardBouncer');
 
         // Extract current foreground package
         let fgPkg: string | undefined;
@@ -1216,6 +1228,16 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '223']);
             dev.isScreenAwake = false;
           }
+          continue;
+        }
+
+        // KEYGUARD / PIN ENTRY PROTECTION:
+        // When the teacher has opened/unlocked the tablet (isClassroomLocked=false) and the screen is on,
+        // but the device is displaying the Lockscreen / PIN pad (isKeyguardShowing=true):
+        // NEVER send 'cmd statusbar collapse', 'input keyevent 4' (BACK), 'input keyevent 3' (HOME),
+        // and DO NOT launch any apps via monkey/am start!
+        // This allows the teacher or student to enter their lockscreen PIN, password, or pattern smoothly.
+        if (isKeyguardShowing) {
           continue;
         }
 

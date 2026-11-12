@@ -409,7 +409,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
             cleanTarget.toUpperCase().includes('64:6D:79')
           ) {
             foundAdbSerial = dev.serial;
-            targetIp = devIp || '192.168.20.32';
+            targetIp = devIp || dev.serial.split(':')[0] || '192.168.1.28';
             targetMac = devMac || targetMac || '00:08:22:64:6D:79';
             if (dev.batteryLevel) foundBattery = dev.batteryLevel;
             break;
@@ -441,7 +441,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
     // 3. Fallback for the registered school tablet MAC
     if (!targetIp && (cleanTarget.toUpperCase().includes('00:08:22') || cleanTarget.toUpperCase().includes('64:6D:79'))) {
-      targetIp = '192.168.20.32';
+      targetIp = '192.168.1.28';
       targetMac = '00:08:22:64:6D:79';
     }
 
