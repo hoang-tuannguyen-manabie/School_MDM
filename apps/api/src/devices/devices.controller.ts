@@ -238,6 +238,51 @@ export class DevicesController {
     };
   }
 
+  @Get('devices/qr-pairing-info')
+  getQrPairingInfo() {
+    const data = this.devicesService.createQrPairingSession();
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/qr-claim')
+  @HttpCode(HttpStatus.OK)
+  async claimQrSession(
+    @Body() body: { session: string; clientIp?: string },
+    @Req() req: { socket?: { remoteAddress?: string }; headers?: Record<string, string | string[]> },
+  ) {
+    const remoteIp =
+      body.clientIp ||
+      (req.headers ? (req.headers['x-forwarded-for'] as string) : undefined) ||
+      req.socket?.remoteAddress;
+
+    const result = await this.devicesService.claimQrSession(body.session, remoteIp);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Get('devices/qr-session-status')
+  getQrSessionStatus(@Query('session') sessionId: string) {
+    const data = this.devicesService.getQrSessionStatus(sessionId);
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('devices/pre-register')
   @HttpCode(HttpStatus.OK)
   async preRegisterDevice(

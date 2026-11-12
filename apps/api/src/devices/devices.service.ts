@@ -8,6 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import * as os from 'node:os';
 import {
   MDM_PROVIDER_TYPES,
   type AuthenticatedUser,
@@ -231,6 +232,127 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
     this.preRegisteredDevices.set(id, record);
     return record;
+  }
+
+  private readonly qrSessions = new Map<
+    string,
+    {
+      sessionId: string;
+      createdAt: number;
+      claimed: boolean;
+      lanIp: string;
+      adbPairingCode: string;
+      ipAddress?: string;
+      macAddress?: string;
+      model?: string;
+      latencyMs?: number;
+      message?: string;
+    }
+  >();
+
+  getLanIpAddress(): string {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+    return '192.168.20.27';
+  }
+
+  createQrPairingSession(): {
+    sessionId: string;
+    lanIp: string;
+    webPort: number;
+    quickConnectUrl: string;
+    adbPairingString: string;
+    adbPairingCode: string;
+  } {
+    const now = Date.now();
+    // Clean up expired sessions older than 15 minutes
+    for (const [id, sess] of this.qrSessions.entries()) {
+      if (now - sess.createdAt > 15 * 60 * 1000) {
+        this.qrSessions.delete(id);
+      }
+    }
+
+    const sessionId = 'qr-' + randomUUID().slice(0, 8);
+    const lanIp = this.getLanIpAddress();
+    const adbPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const quickConnectUrl = `http://${lanIp}:5173/connect?session=${sessionId}`;
+    const adbPairingString = `WIFI:T:ADB;S:SchoolMDM_${lanIp};P:${adbPairingCode};;`;
+
+    this.qrSessions.set(sessionId, {
+      sessionId,
+      createdAt: now,
+      claimed: false,
+      lanIp,
+      adbPairingCode,
+    });
+
+    return {
+      sessionId,
+      lanIp,
+      webPort: 5173,
+      quickConnectUrl,
+      adbPairingString,
+      adbPairingCode,
+    };
+  }
+
+  async claimQrSession(
+    sessionId: string,
+    rawClientIp?: string,
+  ): Promise<{
+    success: boolean;
+    session: {
+      sessionId: string;
+      claimed: boolean;
+      ipAddress?: string;
+      macAddress?: string;
+      model?: string;
+      latencyMs?: number;
+      message?: string;
+    };
+  }> {
+    let cleanIp = (rawClientIp || '').trim();
+    if (cleanIp.startsWith('::ffff:')) {
+      cleanIp = cleanIp.replace('::ffff:', '');
+    }
+    if (cleanIp === '::1' || cleanIp === '127.0.0.1') {
+      cleanIp = '';
+    }
+
+    const session = this.qrSessions.get(sessionId);
+    if (!session) {
+      throw new NotFoundException('Mã phiên QR không hợp lệ hoặc đã hết hạn. Vui lòng làm mới mã QR trên máy tính.');
+    }
+
+    // Auto-probe the tablet from the incoming client IP or active tablet
+    const probeTarget = cleanIp || '00:08:22:64:6D:79';
+    const probeRes = await this.probeDeviceConnection(probeTarget);
+
+    session.claimed = true;
+    session.ipAddress = probeRes.ipAddress || cleanIp;
+    session.macAddress = probeRes.macAddress;
+    session.model = probeRes.model;
+    session.latencyMs = probeRes.latencyMs;
+    session.message = probeRes.message;
+
+    return {
+      success: true,
+      session,
+    };
+  }
+
+  getQrSessionStatus(sessionId: string) {
+    const session = this.qrSessions.get(sessionId);
+    if (!session) {
+      throw new NotFoundException('Phiên QR không tồn tại hoặc đã hết hạn');
+    }
+    return session;
   }
 
   async probeDeviceConnection(target: string): Promise<{

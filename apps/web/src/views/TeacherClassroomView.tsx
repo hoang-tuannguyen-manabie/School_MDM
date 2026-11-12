@@ -26,12 +26,14 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  QrCode,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { ClassroomCountdownTimer } from '../components/ClassroomCountdownTimer';
 import { ChromeBrowsingManager } from '../components/ChromeBrowsingManager';
+import { DeviceQrPairingModal } from '../components/DeviceQrPairingModal';
 
 const PAGE_SIZE = 10;
 
@@ -94,6 +96,7 @@ export function TeacherClassroomView({
 
   // Modal: Select existing tablets from the school system
   const [showDeviceSelectorModal, setShowDeviceSelectorModal] = useState(false);
+  const [showQrPairingModal, setShowQrPairingModal] = useState(false);
   const [allSchoolDevices, setAllSchoolDevices] = useState<ClassroomDeviceRecord[]>([]);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
   const [isLoadingSchoolDevices, setIsLoadingSchoolDevices] = useState(false);
@@ -520,6 +523,13 @@ export function TeacherClassroomView({
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                onClick={() => setShowQrPairingModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Quét mã QR ghép nối</span>
+              </button>
+              <button
                 onClick={handleOpenDeviceSelector}
                 className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
               >
@@ -537,16 +547,25 @@ export function TeacherClassroomView({
                   Lớp {selectedClass} chưa có máy tính bảng nào được gán
                 </h4>
                 <p className="text-xs text-slate-500">
-                  Bấm nút bên dưới để chọn máy tính bảng đã kết nối MAC Wi-Fi đưa vào lớp học này.
+                  Quét mã QR bằng camera máy tính bảng để ghép nối tức thì hoặc chọn từ danh sách đã có.
                 </p>
               </div>
-              <button
-                onClick={handleOpenDeviceSelector}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
-              >
-                <Layers className="w-4 h-4" />
-                <span>Chọn máy tính bảng vào lớp {selectedClass}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2 justify-center">
+                <button
+                  onClick={() => setShowQrPairingModal(true)}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Quét mã QR để ghép nối máy mới</span>
+                </button>
+                <button
+                  onClick={handleOpenDeviceSelector}
+                  className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Chọn máy tính bảng vào lớp</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1395,6 +1414,39 @@ export function TeacherClassroomView({
           </div>
         </div>
       )}
+
+      {/* Device QR Pairing Modal */}
+      <DeviceQrPairingModal
+        isOpen={showQrPairingModal}
+        onClose={() => setShowQrPairingModal(false)}
+        onDeviceEnrolled={async (deviceData) => {
+          const res = await fetch(`${API_BASE_URL}/devices/pre-register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ipAddress: deviceData.ipAddress,
+              macAddress: deviceData.macAddress,
+              androidId: deviceData.macAddress || deviceData.ipAddress,
+              serialNumber: deviceData.macAddress || deviceData.ipAddress,
+              name: deviceData.name,
+              classCode: selectedClass,
+              isOnline: true,
+              model: deviceData.model || 'Teclast P30 (P30_ROW)',
+              batteryLevel: 91,
+            }),
+          });
+
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => null);
+            throw new Error(errJson?.message || 'Không thể đăng ký thiết bị');
+          }
+
+          showToast(`Đã thêm và kích hoạt máy tính bảng vào lớp ${selectedClass}`);
+          await fetchClassroomDevices();
+        }}
+        defaultClassCode={selectedClass}
+        existingCount={devices.length}
+      />
     </div>
   );
 }

@@ -1365,6 +1365,18 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
           tabHost = new URL(rawUrl).hostname.replace(/^www\./, '').toLowerCase();
         } catch {}
 
+        const isSchoolMdmConnect =
+          rawUrl.includes('/connect') ||
+          tabHost === 'localhost' ||
+          tabHost === '127.0.0.1' ||
+          tabHost.startsWith('192.168.') ||
+          tabHost.startsWith('10.');
+
+        if (isSchoolMdmConnect) {
+          activeApprovedTabId = tab.id;
+          continue;
+        }
+
         const isNewTab =
           rawUrl.startsWith('chrome-native://') ||
           rawUrl.startsWith('chrome://') ||
