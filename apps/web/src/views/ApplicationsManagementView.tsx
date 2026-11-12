@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
+import { ChromeBrowsingManager } from '../components/ChromeBrowsingManager';
 
 const PAGE_SIZE = 10;
 
@@ -342,6 +343,9 @@ export function ApplicationsManagementView(): React.ReactElement {
           <p className="text-xs text-rose-500 mt-1">Ngăn chặn xao nhãng bài học</p>
         </div>
       </div>
+
+      {/* Chrome & Web Browsing Control Manager */}
+      <ChromeBrowsingManager onToast={showToast} />
 
       {/* Search and Filters Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">

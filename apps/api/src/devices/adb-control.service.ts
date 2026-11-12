@@ -30,6 +30,20 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   private settingsGraceUntil = 0;
   private timerGraceUntil = 0;
 
+  // Chrome / Web browsing restriction states
+  private chromeRestrictionsEnabled = false;
+  private chromeBlockNewTabs = true;
+  private chromeAllowedUrls: string[] = [
+    'quizizz.com',
+    'kahoot.it',
+    'forms.google.com',
+    'canva.com',
+    'manabie.com',
+    'khanacademy.org',
+  ];
+  private activeLessonUrl: string | null = null;
+  private chromeKioskMode = false;
+
   private readonly approvedPackages = new Set<string>([
     'com.openai.chatgpt',
     'com.canva.editor',
@@ -894,6 +908,191 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  getChromeRestrictions() {
+    return {
+      enabled: this.chromeRestrictionsEnabled,
+      blockNewTabs: this.chromeBlockNewTabs,
+      allowedUrls: this.chromeAllowedUrls,
+      activeLessonUrl: this.activeLessonUrl,
+      kioskMode: this.chromeKioskMode,
+    };
+  }
+
+  async setChromeRestrictions(params: {
+    enabled?: boolean;
+    blockNewTabs?: boolean;
+    allowedUrls?: string[];
+    activeLessonUrl?: string | null;
+    kioskMode?: boolean;
+  }) {
+    if (params.enabled !== undefined) this.chromeRestrictionsEnabled = params.enabled;
+    if (params.blockNewTabs !== undefined) this.chromeBlockNewTabs = params.blockNewTabs;
+    if (params.allowedUrls) {
+      this.chromeAllowedUrls = params.allowedUrls
+        .map((u) => u.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    if (params.activeLessonUrl !== undefined) this.activeLessonUrl = params.activeLessonUrl;
+    if (params.kioskMode !== undefined) this.chromeKioskMode = params.kioskMode;
+
+    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+      (d) => d.status === 'device',
+    );
+
+    await Promise.all(
+      activeDevices.map(async (dev) => {
+        if (this.chromeRestrictionsEnabled) {
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'echo "chrome --disable-fre --no-default-browser-check --disable-new-tab-first-run" > /data/local/tmp/chrome-command-line; chmod 777 /data/local/tmp/chrome-command-line',
+          ]);
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd notification post -S bigtext -t "🔒 Đang kích hoạt Chế độ Duyệt Web An toàn" chrome_policy "Hệ thống đang khóa mở Tab mới & chỉ cho phép các trang web học tập do giáo viên chỉ định."',
+          ]);
+        } else {
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'rm -f /data/local/tmp/chrome-command-line',
+          ]);
+          await this.execAdb([
+            '-s',
+            dev.serial,
+            'shell',
+            'cmd notification post -S bigtext -t "🔓 Đã mở khóa duyệt web" chrome_policy "Giáo viên đã mở khóa duyệt web thông thường."',
+          ]);
+        }
+      }),
+    );
+
+    return this.getChromeRestrictions();
+  }
+
+  async launchLessonWebPage(params: {
+    url: string;
+    kioskMode?: boolean;
+    title?: string;
+  }) {
+    let cleanUrl = params.url.trim();
+    if (!/^https?:\/\//i.test(cleanUrl)) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+
+    this.activeLessonUrl = cleanUrl;
+    this.chromeRestrictionsEnabled = true;
+    this.chromeBlockNewTabs = true;
+    this.chromeKioskMode = Boolean(params.kioskMode);
+
+    if (this.chromeKioskMode) {
+      this.activeKioskPackage = 'com.android.chrome';
+    }
+
+    try {
+      const parsed = new URL(cleanUrl);
+      const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+      if (host && !this.chromeAllowedUrls.includes(host)) {
+        this.chromeAllowedUrls.push(host);
+      }
+    } catch {
+      // Ignore URL parse error
+    }
+
+    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+      (d) => d.status === 'device',
+    );
+
+    await Promise.all(
+      activeDevices.map(async (dev) => {
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'cmd package unsuspend com.android.chrome',
+        ]);
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'input keyevent 224; wm dismiss-keyguard; cmd statusbar collapse',
+        ]);
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          `echo "chrome --app=\\"${cleanUrl}\\" --disable-fre --no-default-browser-check" > /data/local/tmp/chrome-command-line; chmod 777 /data/local/tmp/chrome-command-line`,
+        ]);
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          `am start -a android.intent.action.VIEW -d "${cleanUrl}" -n com.android.chrome/com.google.android.apps.chrome.Main --ez org.chromium.chrome.browser.customtabs.EXTRA_INCOGNITO false`,
+        ]);
+        const pageTitle = params.title || cleanUrl;
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'cmd',
+          'notification',
+          'post',
+          '-S',
+          'bigtext',
+          '-t',
+          '📖 Bài học trực tuyến từ Giáo viên',
+          'lesson_web',
+          `Đã mở bài tập: ${pageTitle}. Đang áp dụng Chế độ Khóa Duyệt Web An Toàn.`,
+        ]);
+      }),
+    );
+
+    return {
+      success: true,
+      url: cleanUrl,
+      kioskMode: this.chromeKioskMode,
+      affectedDevices: activeDevices.length,
+    };
+  }
+
+  async closeLessonWebPage() {
+    this.activeLessonUrl = null;
+    this.chromeKioskMode = false;
+    if (this.activeKioskPackage === 'com.android.chrome') {
+      this.activeKioskPackage = null;
+    }
+
+    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+      (d) => d.status === 'device',
+    );
+
+    await Promise.all(
+      activeDevices.map(async (dev) => {
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'rm -f /data/local/tmp/chrome-command-line',
+        ]);
+        await this.execAdb([
+          '-s',
+          dev.serial,
+          'shell',
+          'cmd notification post -S bigtext -t "⏹️ Đã hoàn thành bài học web" lesson_web "Giáo viên đã kết thúc bài học trên web."',
+        ]);
+      }),
+    );
+
+    return {
+      success: true,
+      affectedDevices: activeDevices.length,
+    };
+  }
+
   /**
    * Continuous 2-second watchdog that enforces Screen Lock, Kiosk App Pinning, and Blocked Apps
    */
@@ -960,7 +1159,16 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             !fgPkg.includes('systemui')
           ) {
             await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
-            await this.launchAppOnDevice(dev.serial, this.activeKioskPackage);
+            if (this.activeKioskPackage === 'com.android.chrome' && this.activeLessonUrl) {
+              await this.execAdb([
+                '-s',
+                dev.serial,
+                'shell',
+                `am start -a android.intent.action.VIEW -d "${this.activeLessonUrl}" -n com.android.chrome/com.google.android.apps.chrome.Main --ez org.chromium.chrome.browser.customtabs.EXTRA_INCOGNITO false`,
+              ]);
+            } else {
+              await this.launchAppOnDevice(dev.serial, this.activeKioskPackage);
+            }
           }
           continue;
         }

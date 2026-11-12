@@ -136,6 +136,73 @@ export class DevicesController {
     };
   }
 
+  @Get('devices/chrome-restrictions')
+  getChromeRestrictions() {
+    const data = this.adbControlService.getChromeRestrictions();
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/chrome-restrictions')
+  @HttpCode(HttpStatus.OK)
+  async updateChromeRestrictions(
+    @Body()
+    body: {
+      enabled?: boolean;
+      blockNewTabs?: boolean;
+      allowedUrls?: string[];
+      activeLessonUrl?: string | null;
+      kioskMode?: boolean;
+    },
+  ) {
+    const data = await this.adbControlService.setChromeRestrictions(body);
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/chrome-launch-lesson')
+  @HttpCode(HttpStatus.OK)
+  async launchLessonWeb(
+    @Body()
+    body: {
+      url: string;
+      kioskMode?: boolean;
+      title?: string;
+    },
+  ) {
+    const data = await this.adbControlService.launchLessonWebPage(body);
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/chrome-close-lesson')
+  @HttpCode(HttpStatus.OK)
+  async closeLessonWeb() {
+    const data = await this.adbControlService.closeLessonWebPage();
+    return {
+      data,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('mdm/agent/heartbeat')
   @HttpCode(HttpStatus.OK)
   async receiveAgentHeartbeat(

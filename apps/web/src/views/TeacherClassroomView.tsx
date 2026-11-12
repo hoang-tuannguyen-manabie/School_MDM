@@ -31,6 +31,7 @@ import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
 import { AppDeviceIcon } from '../components/AppDeviceIcon';
 import { ClassroomCountdownTimer } from '../components/ClassroomCountdownTimer';
+import { ChromeBrowsingManager } from '../components/ChromeBrowsingManager';
 
 const PAGE_SIZE = 10;
 
@@ -888,6 +889,9 @@ export function TeacherClassroomView({
             onExpireLockClassroom={() => setIsAllLocked(true)}
             onToast={showToast}
           />
+
+          {/* Chrome & Web Browsing Control (Block new tabs, prevent search, lesson URL dispatch) */}
+          <ChromeBrowsingManager onToast={showToast} />
 
           {/* CONCISE KIOSK APP PINNING SECTION (No descriptions, teacher can freely pin/unpin any app, max 10 items per page) */}
           <div className="space-y-3 p-4 rounded-2xl bg-slate-50/70 border border-slate-200 shadow-2xs">
