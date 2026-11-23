@@ -104,6 +104,55 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     return list;
   }
 
+  /**
+   * Scans mDNS services to discover tablets in Wireless Debugging pairing mode (_adb-tls-pairing._tcp)
+   * or connection mode (_adb-tls-connect._tcp / _adb._tcp).
+   */
+  async getMdnsPairingCandidates(): Promise<
+    Array<{
+      serviceName: string;
+      serviceType: string;
+      ipAddress: string;
+      port: string;
+      isPairingMode: boolean;
+    }>
+  > {
+    const candidates: Array<{
+      serviceName: string;
+      serviceType: string;
+      ipAddress: string;
+      port: string;
+      isPairingMode: boolean;
+    }> = [];
+
+    const mdnsRes = await this.execAdb(['mdns', 'services'], 2500);
+    if (mdnsRes.ok && mdnsRes.stdout) {
+      for (const line of mdnsRes.stdout.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('List of') || trimmed.startsWith('*')) continue;
+
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 3) {
+          const serviceName = parts[0];
+          const serviceType = parts[1];
+          const endpoint = parts[2];
+          const match = endpoint.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3}):([0-9]{2,5})/);
+          if (match) {
+            const isPairing = serviceType.includes('_adb-tls-pairing');
+            candidates.push({
+              serviceName,
+              serviceType,
+              ipAddress: match[1],
+              port: match[2],
+              isPairingMode: isPairing,
+            });
+          }
+        }
+      }
+    }
+    return candidates;
+  }
+
   constructor() {
     this.adbPath = this.resolveAdbBinaryPath();
     this.knownPortsCachePath = path.resolve(path.dirname(this.adbPath), 'adb-known-ports.json');

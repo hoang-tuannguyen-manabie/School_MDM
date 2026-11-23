@@ -9,6 +9,10 @@ import {
   RefreshCw,
   Sparkles,
   Smartphone,
+  Radio,
+  Copy,
+  Check,
+  Tablet,
 } from 'lucide-react';
 
 interface QrPairingInfo {
@@ -18,6 +22,14 @@ interface QrPairingInfo {
   quickConnectUrl: string;
   adbPairingString: string;
   adbPairingCode: string;
+}
+
+interface AdbPairingCandidate {
+  serviceName: string;
+  serviceType: string;
+  ipAddress: string;
+  port: string;
+  isPairingMode: boolean;
 }
 
 interface ClaimedSession {
@@ -56,8 +68,8 @@ export function DeviceQrPairingModal({
   // QR Session state
   const [qrInfo, setQrInfo] = useState<QrPairingInfo | null>(null);
   const [quickQrDataUrl, setQuickQrDataUrl] = useState<string>('');
-  const [adbQrDataUrl, setAdbQrDataUrl] = useState<string>('');
   const [isLoadingQr, setIsLoadingQr] = useState<boolean>(true);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Claim & Poll state
   const [claimedData, setClaimedData] = useState<ClaimedSession | null>(null);
@@ -76,14 +88,17 @@ export function DeviceQrPairingModal({
   } | null>(null);
 
   // Wireless Debugging code input state
-  const [adbPairIp, setAdbPairIp] = useState('192.168.20.32');
+  const [adbPairIp, setAdbPairIp] = useState('192.168.8.');
   const [adbPairPort, setAdbPairPort] = useState('');
   const [adbPairCode, setAdbPairCode] = useState('');
   const [isPairingAdb, setIsPairingAdb] = useState(false);
   const [adbPairMessage, setAdbPairMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [adbCandidates, setAdbCandidates] = useState<AdbPairingCandidate[]>([]);
+  const [isScanningCandidates, setIsScanningCandidates] = useState(false);
+  const adbCandidateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enroll form state
-  const [deviceName, setDeviceName] = useState(`Máy Bàn 0${existingCount + 1}`);
+  const [deviceName, setDeviceName] = useState(`Teclast P30 (Bàn 0${existingCount + 1})`);
   const [classCode, setClassCode] = useState(defaultClassCode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,27 +118,51 @@ export function DeviceQrPairingModal({
 
       const info: QrPairingInfo = json.data;
       setQrInfo(info);
-      setAdbPairIp(info.lanIp);
+
+      // Default the adb subnet based on server's LAN IP
+      const lanSubnet = info.lanIp ? info.lanIp.split('.').slice(0, 3).join('.') + '.' : '192.168.8.';
+      setAdbPairIp(lanSubnet);
 
       // Generate Quick Connect QR Code
       const quickUrl = await QRCode.toDataURL(info.quickConnectUrl, {
-        width: 240,
+        width: 250,
         margin: 1,
         color: { dark: '#1e1b4b', light: '#ffffff' },
       });
       setQuickQrDataUrl(quickUrl);
-
-      // Generate ADB Wireless Debugging QR Code
-      const adbUrl = await QRCode.toDataURL(info.adbPairingString, {
-        width: 240,
-        margin: 1,
-        color: { dark: '#1e1b4b', light: '#ffffff' },
-      });
-      setAdbQrDataUrl(adbUrl);
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Lỗi nạp mã QR');
     } finally {
       setIsLoadingQr(false);
+    }
+  };
+
+  // Poll for mDNS candidates when in ADB tab
+  const fetchAdbCandidates = async () => {
+    setIsScanningCandidates(true);
+    try {
+      const res = await fetch('/api/v1/devices/adb-pairing-targets');
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.data)) {
+          setAdbCandidates(json.data);
+          const pairingTarget = json.data.find((c: AdbPairingCandidate) => c.isPairingMode);
+          if (pairingTarget) {
+            setAdbPairIp(pairingTarget.ipAddress);
+            setAdbPairPort(pairingTarget.port);
+          } else if (!adbPairPort) {
+            // Pick first candidate port if available
+            const anyTarget = json.data[0];
+            if (anyTarget && anyTarget.ipAddress) {
+              setAdbPairIp(anyTarget.ipAddress);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore transient scan error
+    } finally {
+      setIsScanningCandidates(false);
     }
   };
 
@@ -132,13 +171,15 @@ export function DeviceQrPairingModal({
       fetchQrInfo();
     } else {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (adbCandidateTimerRef.current) clearInterval(adbCandidateTimerRef.current);
     }
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (adbCandidateTimerRef.current) clearInterval(adbCandidateTimerRef.current);
     };
   }, [isOpen]);
 
-  // Poll for QR scan claiming
+  // Polling for QR scan claiming
   useEffect(() => {
     if (!isOpen || !qrInfo?.sessionId || claimedData?.claimed) return;
 
@@ -167,6 +208,21 @@ export function DeviceQrPairingModal({
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, [isOpen, qrInfo?.sessionId, claimedData?.claimed, existingCount]);
+
+  // Polling for ADB pairing candidates
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'QR_ADB') {
+      if (adbCandidateTimerRef.current) clearInterval(adbCandidateTimerRef.current);
+      return;
+    }
+
+    fetchAdbCandidates();
+    adbCandidateTimerRef.current = setInterval(fetchAdbCandidates, 2500);
+
+    return () => {
+      if (adbCandidateTimerRef.current) clearInterval(adbCandidateTimerRef.current);
+    };
+  }, [isOpen, activeTab]);
 
   // Handle manual probe
   const handleManualProbe = async () => {
@@ -197,7 +253,7 @@ export function DeviceQrPairingModal({
   // Handle Wireless Debugging code pairing
   const handleAdbPair = async () => {
     if (!adbPairPort || !adbPairCode) {
-      setAdbPairMessage({ type: 'error', text: 'Vui lòng nhập đầy đủ Cổng và Mã ghép nối 6 số' });
+      setAdbPairMessage({ type: 'error', text: 'Vui lòng nhập đầy đủ Cổng và Mã ghép nối 6 số từ tablet' });
       return;
     }
     setIsPairingAdb(true);
@@ -243,6 +299,58 @@ export function DeviceQrPairingModal({
       setAdbPairMessage({ type: 'error', text: err instanceof Error ? err.message : 'Lỗi ghép nối' });
     } finally {
       setIsPairingAdb(false);
+    }
+  };
+
+  // Handle direct connect for discovered tablet
+  const handleDirectConnect = async (cand: AdbPairingCandidate) => {
+    setIsPairingAdb(true);
+    setAdbPairMessage(null);
+    try {
+      const res = await fetch('/api/v1/devices/adb-pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ipAddress: cand.ipAddress,
+          connectPort: cand.port,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.data?.success) {
+        throw new Error(json.data?.message || 'Kết nối không dây thất bại');
+      }
+      setAdbPairMessage({ type: 'success', text: json.data.message });
+      let resolvedMac: string | undefined;
+      try {
+        const probeRes = await fetch('/api/v1/devices/probe-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: cand.ipAddress }),
+        });
+        const probeJson = await probeRes.json();
+        if (probeJson?.data?.macAddress) resolvedMac = probeJson.data.macAddress;
+      } catch {
+        // ignore
+      }
+      setClaimedData({
+        sessionId: qrInfo?.sessionId || 'adb-pair',
+        claimed: true,
+        ipAddress: cand.ipAddress,
+        model: 'Teclast P30 (P30_ROW)',
+        macAddress: resolvedMac,
+      });
+    } catch (err: unknown) {
+      setAdbPairMessage({ type: 'error', text: err instanceof Error ? err.message : 'Lỗi kết nối' });
+    } finally {
+      setIsPairingAdb(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (qrInfo?.quickConnectUrl) {
+      navigator.clipboard.writeText(qrInfo.quickConnectUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
     }
   };
 
@@ -375,20 +483,39 @@ export function DeviceQrPairingModal({
                 )}
 
                 {/* Instructions */}
-                <div className="max-w-sm text-center">
+                <div className="max-w-sm text-center space-y-1.5">
                   <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                    Mở <strong>Camera máy tính bảng</strong>, <strong>Google Lens</strong> hoặc trình duyệt quét mã QR trên để tự động nhận diện thiết bị.
+                    Mở <strong>Camera máy tính bảng</strong>, <strong>Google Lens</strong> hoặc trình duyệt quét mã QR trên để tự động nhận diện thiết bị qua Wi-Fi.
                   </p>
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={fetchQrInfo}
+                      disabled={isLoadingQr}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700 transition inline-flex items-center gap-1 shadow-2xs"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isLoadingQr ? 'animate-spin' : ''}`} />
+                      <span>Làm mới mã QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700 transition inline-flex items-center gap-1 shadow-2xs"
+                    >
+                      {copiedLink ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-500" />}
+                      <span>{copiedLink ? 'Đã sao chép' : 'Sao chép link'}</span>
+                    </button>
+                  </div>
                   {qrInfo?.quickConnectUrl && (
-                    <p className="text-[10px] text-slate-400 font-mono mt-1 truncate">
-                      Link: {qrInfo.quickConnectUrl}
+                    <p className="text-[10px] text-slate-400 font-mono truncate max-w-xs mx-auto">
+                      {qrInfo.quickConnectUrl}
                     </p>
                   )}
                 </div>
 
                 {/* Detection Status Indicator */}
                 {!claimedData?.claimed ? (
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-semibold">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-semibold">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
@@ -396,7 +523,7 @@ export function DeviceQrPairingModal({
                     <span>Đang chờ máy tính bảng quét mã...</span>
                   </div>
                 ) : (
-                  <div className="w-full p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-left space-y-1 animate-in zoom-in-95 duration-150">
+                  <div className="w-full p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-left space-y-1.5 animate-in zoom-in-95 duration-150">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span>Đã nhận diện máy tính bảng qua mã QR thành công!</span>
@@ -412,82 +539,186 @@ export function DeviceQrPairingModal({
             </div>
           )}
 
-          {/* Tab 2: Android Wireless Debugging QR */}
+          {/* Tab 2: Android Wireless Debugging (Gỡ lỗi qua Wi-Fi) */}
           {activeTab === 'QR_ADB' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  {adbQrDataUrl && (
-                    <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-200 shrink-0">
-                      <img
-                        src={adbQrDataUrl}
-                        alt="Android Wireless Debugging QR"
-                        className="w-32 h-32 rounded-lg object-contain"
-                      />
+              {/* Auto-detected pairing candidate banner */}
+              {(() => {
+                const activePairing = adbCandidates.find((c) => c.isPairingMode);
+                if (activePairing) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between shadow-xs animate-in zoom-in-95 duration-150">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                          <Radio className="w-4 h-4 animate-pulse" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-emerald-950 text-xs">
+                            Đã tự động phát hiện tablet đang chờ ghép nối!
+                          </span>
+                          <p className="text-[11px] text-emerald-700 mt-0.5 font-mono">
+                            IP: <strong>{activePairing.ipAddress}</strong> • Cổng ghép nối:{' '}
+                            <strong>{activePairing.port}</strong>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdbPairIp(activePairing.ipAddress);
+                          setAdbPairPort(activePairing.port);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition shadow-2xs"
+                      >
+                        Tự động điền
+                      </button>
                     </div>
-                  )}
-                  <div className="text-xs text-slate-600 space-y-1.5">
-                    <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-indigo-600" /> Hướng dẫn quét trên Android 11–14:
-                    </h4>
-                    <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-600">
-                      <li>Mở <strong>Cài đặt</strong> → <strong>Tùy chọn cho nhà phát triển</strong> trên máy.</li>
-                      <li>Bật <strong>Gỡ lỗi qua Wi-Fi</strong> → Chọn <strong>Ghép nối thiết bị bằng mã QR</strong>.</li>
-                      <li>Hướng camera máy tính bảng vào mã QR bên cạnh.</li>
-                    </ol>
+                  );
+                }
+                return null;
+              })()}
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="text-xs text-slate-700 space-y-2">
+                  <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-indigo-600" />
+                    <span>Hướng dẫn ghép nối qua Wi-Fi Android 11–14 (Teclast P30):</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
+                      <span className="font-bold text-indigo-700">Bước 1 &amp; 2:</span>
+                      <p>Mở <strong>Cài đặt</strong> → <strong>Tùy chọn cho nhà phát triển</strong> → Bật công tắc <strong>Gỡ lỗi qua Wi-Fi</strong>.</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
+                      <span className="font-bold text-indigo-700">Bước 3 &amp; 4:</span>
+                      <p>Nhấn vào dòng <strong>"Ghép nối thiết bị bằng mã ghép nối"</strong>. Xem Mã 6 số và Cổng trên tablet rồi nhập vào bên dưới.</p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Manual Pairing Code option */}
-                <div className="pt-2 border-t border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                    Hoặc chọn "Ghép nối bằng mã ghép nối" trên máy tính bảng:
-                  </span>
+                <div className="pt-2 border-t border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800">
+                      Nhập thông tin hiển thị trên máy tính bảng:
+                    </span>
+                    {isScanningCandidates && (
+                      <span className="text-[10px] text-indigo-600 inline-flex items-center gap-1">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Đang quét Wi-Fi...
+                      </span>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <input
-                      type="text"
-                      value={adbPairIp}
-                      onChange={(e) => setAdbPairIp(e.target.value)}
-                      placeholder="IP máy tính bảng"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white"
-                    />
-                    <input
-                      type="text"
-                      value={adbPairPort}
-                      onChange={(e) => setAdbPairPort(e.target.value)}
-                      placeholder="Cổng (ví dụ: 38421)"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white"
-                    />
-                    <div className="flex gap-1.5">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold mb-0.5 block">IP máy tính bảng</label>
                       <input
                         type="text"
-                        value={adbPairCode}
-                        onChange={(e) => setAdbPairCode(e.target.value)}
-                        placeholder="Mã 6 số"
-                        maxLength={6}
-                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white text-center font-bold tracking-widest"
+                        value={adbPairIp}
+                        onChange={(e) => setAdbPairIp(e.target.value)}
+                        placeholder="Ví dụ: 192.168.8.82"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
                       />
-                      <button
-                        type="button"
-                        onClick={handleAdbPair}
-                        disabled={isPairingAdb}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 transition shrink-0 disabled:opacity-50"
-                      >
-                        {isPairingAdb ? 'Ghép...' : 'Ghép nối'}
-                      </button>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold mb-0.5 block">Cổng ghép nối (Port)</label>
+                      <input
+                        type="text"
+                        value={adbPairPort}
+                        onChange={(e) => setAdbPairPort(e.target.value)}
+                        placeholder="Ví dụ: 43187"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold mb-0.5 block">Mã ghép nối (6 số)</label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={adbPairCode}
+                          onChange={(e) => setAdbPairCode(e.target.value)}
+                          placeholder="6 số"
+                          maxLength={6}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono text-[11px] text-slate-900 bg-white text-center font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAdbPair}
+                          disabled={isPairingAdb}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 transition shrink-0 disabled:opacity-50 shadow-xs"
+                        >
+                          {isPairingAdb ? 'Đang ghép...' : 'Ghép nối'}
+                        </button>
+                      </div>
                     </div>
                   </div>
+
                   {adbPairMessage && (
-                    <p
-                      className={`text-[11px] mt-1.5 ${
-                        adbPairMessage.type === 'success' ? 'text-emerald-700 font-bold' : 'text-rose-600'
+                    <div
+                      className={`p-2.5 rounded-xl text-xs flex items-center gap-1.5 ${
+                        adbPairMessage.type === 'success'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
                       }`}
                     >
-                      {adbPairMessage.text}
-                    </p>
+                      {adbPairMessage.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      )}
+                      <span>{adbPairMessage.text}</span>
+                    </div>
                   )}
                 </div>
               </div>
+
+              {/* Discovered Wireless Tablets on LAN (already paired or active) */}
+              {(() => {
+                const availableTablets = adbCandidates.filter((c) => !c.isPairingMode);
+                if (availableTablets.length > 0) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Tablet className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Máy tính bảng đã phát hiện trên mạng Wi-Fi ({availableTablets.length} máy):</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={fetchAdbCandidates}
+                          className="text-[11px] text-slate-500 hover:text-indigo-600 inline-flex items-center gap-1 font-semibold"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isScanningCandidates ? 'animate-spin' : ''}`} />
+                          <span>Quét lại</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                        {availableTablets.map((cand, idx) => (
+                          <div
+                            key={`${cand.ipAddress}-${cand.port}-${idx}`}
+                            className="p-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 flex items-center justify-between text-xs transition"
+                          >
+                            <div className="font-mono text-[11px]">
+                              <span className="font-bold text-slate-900">{cand.ipAddress}</span>
+                              <span className="text-slate-500 text-[10px] ml-1">:{cand.port}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDirectConnect(cand)}
+                              disabled={isPairingAdb}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-semibold transition"
+                            >
+                              Kết nối
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
 

@@ -282,6 +282,18 @@ export class DevicesController {
     };
   }
 
+  @Get('devices/adb-pairing-targets')
+  async getAdbPairingTargets() {
+    const candidates = await this.devicesService.getAdbPairingCandidates();
+    return {
+      data: candidates,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Post('devices/qr-claim')
   @HttpCode(HttpStatus.OK)
   async claimQrSession(

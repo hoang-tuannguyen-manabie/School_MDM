@@ -616,14 +616,50 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   getLanIpAddress(): string {
     const ifaces = os.networkInterfaces();
+
+    // 1. Check if an interface shares subnet (/24) with any online/registered tablet
+    const knownTabletIps = Array.from(this.preRegisteredDevices.values())
+      .map((d) => d.ipAddress)
+      .filter((ip): ip is string => Boolean(ip && /^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)));
+
     for (const name of Object.keys(ifaces)) {
       for (const net of ifaces[name] || []) {
-        if (net.family === 'IPv4' && !net.internal) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.') && !net.address.startsWith('192.168.56.')) {
+          const ifaceSubnet = net.address.split('.').slice(0, 3).join('.');
+          for (const tip of knownTabletIps) {
+            if (tip.startsWith(ifaceSubnet + '.')) {
+              return net.address;
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Prioritize Wi-Fi or Wireless or Ethernet interfaces
+    for (const name of Object.keys(ifaces)) {
+      const lowerName = name.toLowerCase();
+      if (lowerName.includes('wi-fi') || lowerName.includes('wireless') || lowerName.includes('wlan') || lowerName.includes('ethernet')) {
+        for (const net of ifaces[name] || []) {
+          if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.') && !net.address.startsWith('192.168.56.')) {
+            return net.address;
+          }
+        }
+      }
+    }
+
+    // 3. Fallback to any valid non-internal IPv4
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.') && !net.address.startsWith('192.168.56.')) {
           return net.address;
         }
       }
     }
-    return '192.168.20.11';
+    return '192.168.8.91';
+  }
+
+  async getAdbPairingCandidates() {
+    return (await this.adbControlService?.getMdnsPairingCandidates()) ?? [];
   }
 
   createQrPairingSession(): {
@@ -687,6 +723,9 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     }
     if (cleanIp.startsWith('::ffff:')) {
       cleanIp = cleanIp.replace('::ffff:', '');
+    }
+    if (cleanIp.includes(':') && !cleanIp.includes('::') && /^([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+$/.test(cleanIp)) {
+      cleanIp = cleanIp.split(':')[0].trim();
     }
     if (cleanIp === '::1' || cleanIp === '127.0.0.1') {
       cleanIp = '';
