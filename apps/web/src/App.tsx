@@ -43,6 +43,9 @@ import {
   ChevronRight,
   QrCode,
   RefreshCw,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
@@ -498,6 +501,25 @@ function DevicesAndSessionControlView({
   // Real device QR & Wi-Fi enrollment modal (Admin only)
   const [showEnrollModal, setShowEnrollModal] = useState(false);
 
+  // Classroom Unlock PIN
+  const [classroomPin, setClassroomPin] = useState<string>(
+    () => localStorage.getItem('classroom_unlock_pin') || '',
+  );
+  const [showPinText, setShowPinText] = useState(false);
+  const [rememberPin, setRememberPin] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/devices/classroom-pin`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data?.pinCode) {
+          setClassroomPin(res.data.pinCode);
+          localStorage.setItem('classroom_unlock_pin', res.data.pinCode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Poll real devices
   const fetchDevices = useCallback(async () => {
     try {
@@ -736,8 +758,19 @@ function DevicesAndSessionControlView({
       await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: !isUnlock }),
+        body: JSON.stringify({
+          locked: !isUnlock,
+          pinCode: isUnlock ? classroomPin : undefined,
+        }),
       });
+      if (isUnlock && classroomPin && rememberPin) {
+        localStorage.setItem('classroom_unlock_pin', classroomPin);
+        void fetch(`${API_BASE_URL}/devices/classroom-pin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinCode: classroomPin }),
+        });
+      }
     } catch {
       // ignore
     }
@@ -745,7 +778,9 @@ function DevicesAndSessionControlView({
       actionName: confirmModal.actionName,
       status: COMMAND_STATUSES.SENT,
       detail: isUnlock
-        ? 'Lệnh Mở khóa màn hình qua MAC Wi-Fi đã được thực thi trên thiết bị.'
+        ? classroomPin
+          ? `Lệnh Mở khóa với mã PIN [${classroomPin}] đã được phát đến toàn bộ thiết bị.`
+          : 'Lệnh Mở khóa màn hình qua MAC Wi-Fi đã được thực thi trên thiết bị.'
         : 'Lệnh Khóa màn hình phần cứng qua MAC Wi-Fi đã được phát đến toàn bộ thiết bị.',
     });
     setConfirmModal(null);
@@ -834,6 +869,11 @@ function DevicesAndSessionControlView({
           >
             <Unlock className="w-3.5 h-3.5 shrink-0" />
             <span>Mở khóa</span>
+            {classroomPin && (
+              <span className="text-[10px] bg-emerald-800/80 text-emerald-100 px-1.5 py-0.5 rounded font-mono ml-0.5">
+                PIN: {classroomPin}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -881,6 +921,53 @@ function DevicesAndSessionControlView({
           <p className="text-xs text-slate-600 leading-relaxed">
             Thao tác này sẽ áp dụng ngay lập tức lên tất cả máy tính bảng đang kết nối MAC Wi-Fi.
           </p>
+
+          {confirmModal.commandType === 'UNLOCK_DEVICE' && (
+            <div className="p-3.5 rounded-xl bg-white border border-emerald-200 shadow-2xs space-y-2.5">
+              <label className="text-xs font-semibold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                  Mã PIN mở khóa máy (cả lớp dùng chung):
+                </span>
+                <span className="text-[11px] text-emerald-700 font-medium">Tự động nhập mở khóa</span>
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative w-48">
+                  <input
+                    type={showPinText ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={8}
+                    autoFocus
+                    placeholder="Mã PIN (ví dụ: 1234)"
+                    value={classroomPin}
+                    onChange={(e) => setClassroomPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono font-bold tracking-widest text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPinText(!showPinText)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    title={showPinText ? 'Ẩn PIN' : 'Hiện PIN'}
+                  >
+                    {showPinText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberPin}
+                    onChange={(e) => setRememberPin(e.target.checked)}
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Ghi nhớ mã PIN này cho các lần sau</span>
+                </label>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Khi thực hiện, hệ thống sẽ bật sáng màn hình và tự động nhập mã PIN này để mở khóa toàn bộ tablet.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-2 pt-1">
             <button
               type="button"

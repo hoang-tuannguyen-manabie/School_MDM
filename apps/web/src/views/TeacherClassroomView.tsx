@@ -27,6 +27,9 @@ import {
   ChevronLeft,
   ChevronRight,
   QrCode,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '@school-mdm/ui';
 import { API_BASE_URL } from '../config/api';
@@ -102,6 +105,51 @@ export function TeacherClassroomView({
   const [isLoadingSchoolDevices, setIsLoadingSchoolDevices] = useState(false);
   const [isSavingDeviceSelection, setIsSavingDeviceSelection] = useState(false);
   const [selectorPage, setSelectorPage] = useState(1);
+
+  // Classroom Unlock PIN states
+  const [classroomPin, setClassroomPin] = useState<string>(
+    () => localStorage.getItem('classroom_unlock_pin') || '',
+  );
+  const [showPinText, setShowPinText] = useState(false);
+  const [isSavingPin, setIsSavingPin] = useState(false);
+  const [unlockModal, setUnlockModal] = useState<{
+    isOpen: boolean;
+    targetDevice?: ClassroomDeviceRecord | null;
+  }>({ isOpen: false });
+  const [unlockPinInput, setUnlockPinInput] = useState<string>('');
+  const [rememberPin, setRememberPin] = useState<boolean>(true);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/devices/classroom-pin`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data?.pinCode) {
+          setClassroomPin(res.data.pinCode);
+          localStorage.setItem('classroom_unlock_pin', res.data.pinCode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveClassroomPin = async (newPin: string) => {
+    const clean = newPin.trim().replace(/[^0-9]/g, '');
+    setClassroomPin(clean);
+    localStorage.setItem('classroom_unlock_pin', clean);
+    setIsSavingPin(true);
+    try {
+      await fetch(`${API_BASE_URL}/devices/classroom-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinCode: clean }),
+      });
+      showToast(clean ? `Đã lưu mã PIN mở máy lớp: ${clean}` : 'Đã xóa mã PIN mở máy.');
+    } catch {
+      showToast('Lỗi khi lưu mã PIN lên máy chủ.');
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -373,18 +421,73 @@ export function TeacherClassroomView({
     }
   };
 
-  // Unlock entire classroom (real hardware wake + dismiss keyguard)
-  const handleUnlockAll = async () => {
-    setIsAllLocked(false);
+  // Lock single tablet
+  const handleLockSingle = async (device: ClassroomDeviceRecord) => {
     try {
+      const targetId = device.serialNumber || device.ipAddress || device.id;
       await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: false }),
+        body: JSON.stringify({ locked: true, targetDeviceId: targetId }),
       });
-      showToast('Đã mở sáng màn hình toàn bộ máy tính bảng. Học sinh có thể làm bài tiếp tục.');
+      showToast(`Đã khóa màn hình thiết bị [${device.name || device.id}].`);
+    } catch {
+      showToast('Lỗi khi gửi lệnh khóa thiết bị.');
+    }
+  };
+
+  // Execute unlock with PIN for whole class or target device
+  const handleExecuteUnlock = async (
+    pinToSend: string,
+    targetDevice?: ClassroomDeviceRecord | null,
+  ) => {
+    setIsUnlocking(true);
+    setIsAllLocked(false);
+    try {
+      const cleanPin = pinToSend.trim().replace(/[^0-9]/g, '');
+      const targetId = targetDevice
+        ? targetDevice.serialNumber || targetDevice.ipAddress || targetDevice.id
+        : undefined;
+
+      const res = await fetch(`${API_BASE_URL}/devices/classroom-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locked: false,
+          pinCode: cleanPin || undefined,
+          targetDeviceId: targetId,
+        }),
+      });
+
+      if (res.ok) {
+        if (cleanPin && rememberPin) {
+          setClassroomPin(cleanPin);
+          localStorage.setItem('classroom_unlock_pin', cleanPin);
+          void fetch(`${API_BASE_URL}/devices/classroom-pin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pinCode: cleanPin }),
+          });
+        }
+        if (cleanPin) {
+          showToast(
+            targetDevice
+              ? `Đang bật sáng và tự động nhập mã PIN mở khóa cho [${targetDevice.name}].`
+              : `Đang bật sáng và tự động nhập mã PIN mở khóa cho toàn bộ lớp học!`,
+          );
+        } else {
+          showToast(
+            targetDevice
+              ? `Đã bật sáng màn hình cho [${targetDevice.name}].`
+              : 'Đã mở sáng màn hình toàn bộ máy tính bảng.',
+          );
+        }
+      }
     } catch {
       showToast('Lỗi khi gửi lệnh mở khóa.');
+    } finally {
+      setIsUnlocking(false);
+      setUnlockModal({ isOpen: false });
     }
   };
 
@@ -752,7 +855,7 @@ export function TeacherClassroomView({
                                 <span>{reconnectingId === device.id ? 'Đang kết nối...' : 'Reconnect'}</span>
                               </button>
                               <button
-                                onClick={handleLockAll}
+                                onClick={() => handleLockSingle(device)}
                                 title="Khóa màn hình thiết bị này"
                                 className="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-semibold transition inline-flex items-center gap-1 whitespace-nowrap"
                               >
@@ -760,8 +863,11 @@ export function TeacherClassroomView({
                                 <span>Khóa</span>
                               </button>
                               <button
-                                onClick={handleUnlockAll}
-                                title="Mở sáng màn hình thiết bị này"
+                                onClick={() => {
+                                  setUnlockPinInput(classroomPin);
+                                  setUnlockModal({ isOpen: true, targetDevice: device });
+                                }}
+                                title="Mở sáng màn hình thiết bị này với mã PIN"
                                 className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Unlock className="w-3 h-3" />
@@ -883,9 +989,46 @@ export function TeacherClassroomView({
 
           {/* Quick Teaching Actions (1-Click Actions) */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-              Lệnh điều khiển tức thời qua MAC Wi-Fi
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                Lệnh điều khiển tức thời qua MAC Wi-Fi
+              </p>
+              <div className="flex items-center gap-2 bg-emerald-50/90 border border-emerald-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
+                <KeyRound className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="font-semibold text-emerald-950">Mã PIN mở máy lớp:</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type={showPinText ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={8}
+                    placeholder="Chưa cài PIN"
+                    value={classroomPin}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9]/g, '');
+                      setClassroomPin(v);
+                    }}
+                    onBlur={() => handleSaveClassroomPin(classroomPin)}
+                    className="w-20 px-2 py-0.5 bg-white border border-emerald-300 rounded text-center font-mono font-bold tracking-widest text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPinText(!showPinText)}
+                    className="p-1 text-emerald-700 hover:text-emerald-900 rounded"
+                    title={showPinText ? 'Ẩn mã PIN' : 'Hiện mã PIN'}
+                  >
+                    {showPinText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveClassroomPin(classroomPin)}
+                    disabled={isSavingPin}
+                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] transition shadow-2xs"
+                  >
+                    {isSavingPin ? 'Đang lưu...' : 'Lưu PIN'}
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Lock All */}
               <button
@@ -907,14 +1050,19 @@ export function TeacherClassroomView({
 
               {/* Unlock All */}
               <button
-                onClick={handleUnlockAll}
+                onClick={() => {
+                  setUnlockPinInput(classroomPin);
+                  setUnlockModal({ isOpen: true, targetDevice: null });
+                }}
                 className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30 text-left transition flex items-center justify-between group shadow-xs"
               >
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700">
                     <Unlock className="w-4 h-4" /> Mở khóa cho học sinh
                   </div>
-                  <p className="text-[11px] text-slate-500">Bật sáng màn hình để làm bài</p>
+                  <p className="text-[11px] text-slate-500">
+                    {classroomPin ? `Mở máy tự động với PIN [${classroomPin}]` : 'Bật sáng màn hình để làm bài'}
+                  </p>
                 </div>
               </button>
 
@@ -1362,6 +1510,127 @@ export function TeacherClassroomView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Classroom Unlock with PIN Modal */}
+      {unlockModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-2xs">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {unlockModal.targetDevice
+                      ? `Mở khóa [${unlockModal.targetDevice.name || unlockModal.targetDevice.id}]`
+                      : 'Mở khóa màn hình cả lớp'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {unlockModal.targetDevice
+                      ? `Địa chỉ: ${unlockModal.targetDevice.ipAddress || unlockModal.targetDevice.macAddress}`
+                      : 'Áp dụng đồng loạt cho tất cả máy tính bảng đang kết nối'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUnlockModal({ isOpen: false })}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="font-semibold text-slate-800">
+                    Mã PIN mở khóa máy tính bảng:
+                  </label>
+                  <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Chung 1 mã PIN
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPinText ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={8}
+                    autoFocus
+                    placeholder="Nhập mã PIN (ví dụ: 1234)"
+                    value={unlockPinInput}
+                    onChange={(e) => setUnlockPinInput(e.target.value.replace(/[^0-9]/g, ''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        void handleExecuteUnlock(unlockPinInput, unlockModal.targetDevice);
+                      }
+                    }}
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-bold tracking-widest text-slate-900 placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPinText(!showPinText)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 rounded"
+                    title={showPinText ? 'Ẩn mã PIN' : 'Hiện mã PIN'}
+                  >
+                    {showPinText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Hệ thống sẽ bật sáng màn hình và tự động gõ mã PIN này để mở khóa đồng loạt máy tính bảng.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700 pt-1">
+                <input
+                  type="checkbox"
+                  checked={rememberPin}
+                  onChange={(e) => setRememberPin(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span>Lưu mã PIN này làm mặc định cho các lần mở sau</span>
+              </label>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setUnlockModal({ isOpen: false })}
+                className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition shadow-2xs"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExecuteUnlock('', unlockModal.targetDevice)}
+                disabled={isUnlocking}
+                className="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition shadow-2xs"
+                title="Bật sáng màn hình mà không tự gõ mã PIN"
+              >
+                Chỉ bật sáng (Không PIN)
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExecuteUnlock(unlockPinInput, unlockModal.targetDevice)}
+                disabled={isUnlocking}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {isUnlocking ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang mở khóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Mở khóa với mã PIN</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

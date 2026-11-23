@@ -84,11 +84,54 @@ export class DevicesController {
     @Body()
     body: {
       locked: boolean;
+      pinCode?: string;
+      targetDeviceId?: string;
     },
   ) {
-    const result = await this.adbControlService.setClassroomLock(Boolean(body.locked));
+    const result = await this.adbControlService.setClassroomLock(
+      Boolean(body.locked),
+      body.pinCode,
+      body.targetDeviceId,
+    );
     return {
       data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Get('devices/classroom-pin')
+  getClassroomPin() {
+    const pin = this.adbControlService.getClassroomPin();
+    return {
+      data: {
+        pinCode: pin,
+        hasPin: Boolean(pin),
+      },
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/classroom-pin')
+  @HttpCode(HttpStatus.OK)
+  setClassroomPin(
+    @Body()
+    body: {
+      pinCode: string;
+    },
+  ) {
+    this.adbControlService.setClassroomPin(body.pinCode || '');
+    const pin = this.adbControlService.getClassroomPin();
+    return {
+      data: {
+        pinCode: pin,
+        hasPin: Boolean(pin),
+      },
       meta: {
         requestId: randomUUID(),
         timestamp: new Date().toISOString(),

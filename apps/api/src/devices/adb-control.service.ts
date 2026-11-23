@@ -27,6 +27,8 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
   // Classroom hardware control states
   private isClassroomLocked = false;
+  private classroomPinCode = '';
+  private readonly classroomSettingsCachePath: string;
   private activeKioskPackage: string | null = null;
   private settingsGraceUntil = 0;
   private timerGraceUntil = 0;
@@ -156,7 +158,9 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   constructor() {
     this.adbPath = this.resolveAdbBinaryPath();
     this.knownPortsCachePath = path.resolve(path.dirname(this.adbPath), 'adb-known-ports.json');
+    this.classroomSettingsCachePath = path.resolve(path.dirname(this.adbPath), 'classroom-settings.json');
     this.loadKnownPortsFromDisk();
+    this.loadClassroomSettings();
   }
 
   /**
@@ -244,6 +248,42 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     } catch {
       // Ignore cache write errors
     }
+  }
+
+  private loadClassroomSettings() {
+    try {
+      if (fs.existsSync(this.classroomSettingsCachePath)) {
+        const raw = JSON.parse(fs.readFileSync(this.classroomSettingsCachePath, 'utf8')) as {
+          classroomPinCode?: string;
+        };
+        if (raw?.classroomPinCode) {
+          this.classroomPinCode = String(raw.classroomPinCode).trim();
+        }
+      }
+    } catch {
+      // Ignore cache read errors
+    }
+  }
+
+  private saveClassroomSettings() {
+    try {
+      const data = {
+        classroomPinCode: this.classroomPinCode,
+        updatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(this.classroomSettingsCachePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch {
+      // Ignore cache write errors
+    }
+  }
+
+  getClassroomPin(): string {
+    return this.classroomPinCode;
+  }
+
+  setClassroomPin(pin: string) {
+    this.classroomPinCode = (pin || '').trim().replace(/[^0-9]/g, '');
+    this.saveClassroomSettings();
   }
 
   private resolveAdbBinaryPath(): string {
@@ -421,6 +461,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
       isClassroomLocked: this.isClassroomLocked,
       activeKioskPackage: this.activeKioskPackage,
       connectedCount: activeDevices.length,
+      classroomPinCode: this.classroomPinCode,
       devices: all,
     };
   }
@@ -582,38 +623,91 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Lock or Unlock all classroom tablets immediately
+   * Lock or Unlock classroom tablets immediately.
+   * If pinCode is provided, automatically enters the PIN to unlock the lockscreen.
+   * If targetDeviceId is provided, applies only to that device; otherwise all active devices.
    */
-  async setClassroomLock(locked: boolean): Promise<{
+  async setClassroomLock(
+    locked: boolean,
+    pinCode?: string,
+    targetDeviceId?: string,
+  ): Promise<{
     locked: boolean;
     affectedDevices: number;
+    pinConfigured: boolean;
+    message?: string;
   }> {
     this.isClassroomLocked = locked;
-    const activeDevices = Array.from(this.connectedDevices.values()).filter(
+
+    if (pinCode !== undefined && pinCode !== null) {
+      const clean = pinCode.trim().replace(/[^0-9]/g, '');
+      if (clean) {
+        this.classroomPinCode = clean;
+        this.saveClassroomSettings();
+      }
+    }
+
+    const allActive = Array.from(this.connectedDevices.values()).filter(
       (d) => d.status === 'device',
     );
 
+    let targetDevices = allActive;
+    if (targetDeviceId && targetDeviceId !== 'ALL') {
+      const filtered = allActive.filter(
+        (d) =>
+          d.serial === targetDeviceId ||
+          d.ipAddress === targetDeviceId ||
+          (d.ipAddress && targetDeviceId.includes(d.ipAddress)),
+      );
+      if (filtered.length > 0) {
+        targetDevices = filtered;
+      }
+    }
+
+    const effectivePin = (pinCode !== undefined ? pinCode : this.classroomPinCode || '')
+      .trim()
+      .replace(/[^0-9]/g, '');
+
     await Promise.all(
-      activeDevices.map(async (dev) => {
-        if (locked) {
-          await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
-          await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '223']);
-          dev.isScreenAwake = false;
-        } else {
-          // 1. Wake screen (KEYCODE_WAKEUP)
-          await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
-          // 2. Dismiss non-secure lockscreen, or smoothly bring up PIN/password entry keypad
-          await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
-          dev.isScreenAwake = true;
-          // Note: Do NOT execute hardcoded 'input swipe' here as swiping through the keypad taps buttons and corrupts PIN entry!
-          // If kiosk mode is active, the watchdog will smoothly launch the kiosk app as soon as the user unlocks the screen.
+      targetDevices.map(async (dev) => {
+        try {
+          if (locked) {
+            await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
+            await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '223']);
+            dev.isScreenAwake = false;
+          } else {
+            // 1. Wake screen (KEYCODE_WAKEUP)
+            await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '224']);
+            // 2. Collapse statusbar and bring up PIN bouncer (dismiss non-secure lock or show PIN keypad)
+            await this.execAdb(['-s', dev.serial, 'shell', 'cmd', 'statusbar', 'collapse']);
+            await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
+            await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '82']);
+            dev.isScreenAwake = true;
+
+            // 3. If PIN is provided, automatically type PIN digits and submit ENTER
+            if (effectivePin) {
+              await new Promise((r) => setTimeout(r, 350));
+              await this.execAdb(['-s', dev.serial, 'shell', 'input', 'text', effectivePin]);
+              await this.execAdb(['-s', dev.serial, 'shell', 'input', 'keyevent', '66']);
+              await new Promise((r) => setTimeout(r, 250));
+              await this.execAdb(['-s', dev.serial, 'shell', 'wm', 'dismiss-keyguard']);
+            }
+          }
+        } catch {
+          // Continue with other devices
         }
       }),
     );
 
     return {
       locked: this.isClassroomLocked,
-      affectedDevices: activeDevices.length,
+      affectedDevices: targetDevices.length,
+      pinConfigured: Boolean(this.classroomPinCode),
+      message: locked
+        ? 'Đã phát lệnh khóa màn hình'
+        : effectivePin
+          ? `Đã phát lệnh mở sáng màn hình và tự động nhập mã PIN cho ${targetDevices.length} thiết bị`
+          : `Đã phát lệnh bật sáng màn hình cho ${targetDevices.length} thiết bị`,
     };
   }
 
