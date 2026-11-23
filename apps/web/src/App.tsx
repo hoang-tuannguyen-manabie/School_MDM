@@ -42,6 +42,7 @@ import {
   ChevronLeft,
   ChevronRight,
   QrCode,
+  RefreshCw,
 } from 'lucide-react';
 import { AdminLogin } from './components/AdminLogin';
 import { TeacherClassroomView } from './views/TeacherClassroomView';
@@ -108,30 +109,74 @@ function OverviewView({
   const navigate = useNavigate();
   const [devices, setDevices] = useState<RealDeviceItem[]>([]);
   const [page, setPage] = useState(1);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
+  const [isReconnectingAll, setIsReconnectingAll] = useState(false);
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
+
+  const loadDevices = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/classroom-status`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          setDevices(json.data);
+        }
+      }
+    } catch {
+      // Backend temporarily unavailable
+    }
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadDevices = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/devices/classroom-status`);
-        if (res.ok) {
-          const json = await res.json();
-          if (isMounted && json.data) {
-            setDevices(json.data);
-          }
-        }
-      } catch {
-        // Backend temporarily unavailable
-      }
-    };
-
     loadDevices();
     const interval = setInterval(loadDevices, 3000);
     return () => {
-      isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [loadDevices]);
+
+  const handleReconnectSingle = async (device: RealDeviceItem) => {
+    setReconnectingId(device.id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: device.id,
+          target: device.macAddress || device.ipAddress,
+        }),
+      });
+      const json = await res.json();
+      if (json.data?.message) {
+        setReconnectNotice(json.data.message);
+        setTimeout(() => setReconnectNotice(null), 5000);
+      }
+      await loadDevices();
+    } catch {
+      setReconnectNotice(`Không thể Reconnect với ${device.name}`);
+    } finally {
+      setReconnectingId(null);
+    }
+  };
+
+  const handleReconnectAllOverview = async () => {
+    setIsReconnectingAll(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect-all`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (json.data?.message) {
+        setReconnectNotice(json.data.message);
+        setTimeout(() => setReconnectNotice(null), 5000);
+      }
+      await loadDevices();
+    } catch {
+      setReconnectNotice('Không thể làm mới kết nối các máy tính bảng');
+    } finally {
+      setIsReconnectingAll(false);
+    }
+  };
 
   const totalCount = devices.length;
   const onlineCount = devices.filter((d) => d.status === 'ONLINE').length;
@@ -169,13 +214,33 @@ function OverviewView({
             </div>
           </div>
 
-          <button
-            onClick={() => navigate('/devices')}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
-          >
-            <Pencil className="w-3.5 h-3.5" /> Quản lý &amp; Đổi tên Thiết bị
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleReconnectAllOverview}
+              disabled={isReconnectingAll}
+              className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition disabled:opacity-50"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5 text-emerald-600', isReconnectingAll && 'animate-spin')} />
+              <span>{isReconnectingAll ? 'Đang Reconnect...' : 'Reconnect Tất Cả'}</span>
+            </button>
+            <button
+              onClick={() => navigate('/devices')}
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+            >
+              <Pencil className="w-3.5 h-3.5" /> Quản lý &amp; Đổi tên Thiết bị
+            </button>
+          </div>
         </div>
+
+        {reconnectNotice && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-semibold flex items-center justify-between">
+            <span>{reconnectNotice}</span>
+            <button onClick={() => setReconnectNotice(null)} className="text-emerald-700 hover:text-emerald-900">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-left border-collapse text-xs">
@@ -187,6 +252,7 @@ function OverviewView({
                 <th className="py-2.5 px-4 font-semibold">Trạng thái Kiểm soát</th>
                 <th className="py-2.5 px-4 font-semibold">Pin</th>
                 <th className="py-2.5 px-4 font-semibold">Phản hồi</th>
+                <th className="py-2.5 px-4 font-semibold text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -227,6 +293,18 @@ function OverviewView({
                         : '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-500">{d.lastSeen}</td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleReconnectSingle(d)}
+                        disabled={reconnectingId === d.id}
+                        title="Reconnect & Kiểm tra kết nối máy này"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold transition inline-flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <RefreshCw className={cn('w-3.5 h-3.5', reconnectingId === d.id && 'animate-spin')} />
+                        <span>{reconnectingId === d.id ? 'Đang kết nối...' : 'Reconnect'}</span>
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -478,6 +556,104 @@ function DevicesAndSessionControlView({
   const [editModel, setEditModel] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editProbeSuccess, setEditProbeSuccess] = useState<string | null>(null);
+  const [isTestingEditConn, setIsTestingEditConn] = useState(false);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
+  const [isReconnectingAll, setIsReconnectingAll] = useState(false);
+
+  const handleReconnectDevice = async (device: RealDeviceItem) => {
+    setReconnectingId(device.id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: device.id,
+          target: device.macAddress || device.ipAddress,
+        }),
+      });
+      const json = await res.json();
+      await fetchDevices();
+      setLastCommandResult({
+        actionName: `Reconnect & Test Kết nối: ${device.name}`,
+        status: COMMAND_STATUSES.ACKNOWLEDGED,
+        detail:
+          json.data?.message ||
+          `Đã kết nối lại thành công với ${device.name} (${device.macAddress || ''} • ${device.ipAddress || ''}).`,
+      });
+    } catch {
+      setLastCommandResult({
+        actionName: `Reconnect: ${device.name}`,
+        status: COMMAND_STATUSES.FAILED,
+        detail: `Không thể kết nối tới máy chủ để Reconnect ${device.name}.`,
+      });
+    } finally {
+      setReconnectingId(null);
+    }
+  };
+
+  const handleReconnectAllDevices = async () => {
+    setIsReconnectingAll(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect-all`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      await fetchDevices();
+      setLastCommandResult({
+        actionName: 'Reconnect & Quét lại Toàn bộ Thiết bị Lớp học',
+        status: COMMAND_STATUSES.ACKNOWLEDGED,
+        detail:
+          json.data?.message ||
+          'Đã làm mới kết nối MAC Wi-Fi & ADB cho toàn bộ máy tính bảng trong lớp học.',
+      });
+    } catch {
+      setLastCommandResult({
+        actionName: 'Reconnect Toàn bộ Thiết bị',
+        status: COMMAND_STATUSES.FAILED,
+        detail: 'Lỗi kết nối máy chủ khi thực hiện Reconnect.',
+      });
+    } finally {
+      setIsReconnectingAll(false);
+    }
+  };
+
+  const handleTestEditConnection = async () => {
+    if (!editingDevice) return;
+    const target = editMacAddress.trim() || editIpAddress.trim();
+    if (!target) {
+      setEditError('Vui lòng nhập Địa chỉ MAC Wi-Fi hoặc IP để test kết nối');
+      return;
+    }
+    setIsTestingEditConn(true);
+    setEditError(null);
+    setEditProbeSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: editingDevice.id,
+          target,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.message || 'Không thể kiểm tra kết nối');
+      }
+      if (json.data?.ipAddress) setEditIpAddress(json.data.ipAddress);
+      if (json.data?.macAddress) setEditMacAddress(json.data.macAddress);
+      setEditProbeSuccess(
+        json.data?.message ||
+          `✓ Kết nối thành công (${json.data?.latencyMs ?? 2}ms) — IP: ${json.data?.ipAddress || editIpAddress}`,
+      );
+      await fetchDevices();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Lỗi khi test kết nối');
+    } finally {
+      setIsTestingEditConn(false);
+    }
+  };
 
   const handleOpenEditDevice = (device: RealDeviceItem) => {
     setEditingDevice(device);
@@ -487,6 +663,7 @@ function DevicesAndSessionControlView({
     setEditMacAddress(device.macAddress || device.androidId || device.serialNumber || '');
     setEditModel(device.model || 'Teclast P30 (P30_ROW)');
     setEditError(null);
+    setEditProbeSuccess(null);
   };
 
   const handleSaveEditDevice = async (e: React.FormEvent) => {
@@ -601,6 +778,17 @@ function DevicesAndSessionControlView({
             <option value="7A1">Lớp 7A1</option>
             <option value="8A1">Lớp 8A1</option>
           </select>
+
+          {/* Reconnect & Test All Devices button */}
+          <button
+            type="button"
+            onClick={handleReconnectAllDevices}
+            disabled={isReconnectingAll}
+            className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5 text-emerald-600', isReconnectingAll && 'animate-spin')} />
+            <span>{isReconnectingAll ? 'Đang Reconnect...' : 'Reconnect Tất Cả'}</span>
+          </button>
 
           {/* Enroll Real Device button via QR Code */}
           <button
@@ -799,6 +987,16 @@ function DevicesAndSessionControlView({
                       <td className="py-3 px-4 text-right">
                         <div className="inline-flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
+                            onClick={() => handleReconnectDevice(d)}
+                            disabled={reconnectingId === d.id}
+                            title="Reconnect khi mở lại máy hoặc kiểm tra tín hiệu kết nối"
+                            className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold transition inline-flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <RefreshCw className={cn('w-3.5 h-3.5', reconnectingId === d.id && 'animate-spin')} />
+                            <span>{reconnectingId === d.id ? 'Đang kết nối...' : 'Reconnect'}</span>
+                          </button>
+                          <button
                             onClick={() => handleOpenEditDevice(d)}
                             title="Chỉnh sửa tên và thông tin thiết bị"
                             className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition inline-flex items-center gap-1"
@@ -885,6 +1083,12 @@ function DevicesAndSessionControlView({
               </div>
             )}
 
+            {editProbeSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-semibold">
+                {editProbeSuccess}
+              </div>
+            )}
+
             <form onSubmit={handleSaveEditDevice} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -926,7 +1130,7 @@ function DevicesAndSessionControlView({
                     type="text"
                     value={editIpAddress}
                     onChange={(e) => setEditIpAddress(e.target.value)}
-                    placeholder="192.168.1.28"
+                    placeholder="192.168.20.19"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                   />
                 </div>
@@ -939,10 +1143,22 @@ function DevicesAndSessionControlView({
                     type="text"
                     value={editMacAddress}
                     onChange={(e) => setEditMacAddress(e.target.value)}
-                    placeholder="00:08:22:64:6D:79"
+                    placeholder="00:08:22:FC:BC:7D"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                   />
                 </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleTestEditConnection}
+                  disabled={isTestingEditConn}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('w-3.5 h-3.5', isTestingEditConn && 'animate-spin')} />
+                  <span>{isTestingEditConn ? 'Đang test kết nối...' : 'Reconnect & Test kết nối'}</span>
+                </button>
               </div>
 
               <div>

@@ -722,10 +722,44 @@ export function AdminSessionsView(): React.ReactElement {
   const [activeKioskApp, setActiveKioskApp] = useState<ClassroomAppItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [appPage, setAppPage] = useState(1);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
+  const [isReconnectingAll, setIsReconnectingAll] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleReconnectDevice = async (d: ClassroomDeviceRecord) => {
+    setReconnectingId(d.id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: d.id, target: d.macAddress || d.ipAddress }),
+      });
+      const j = await res.json();
+      await loadStatus();
+      showToast(j.data?.message || `✓ Đã Reconnect thành công với ${d.name}`);
+    } catch {
+      showToast(`Không thể Reconnect với ${d.name}`);
+    } finally {
+      setReconnectingId(null);
+    }
+  };
+
+  const handleReconnectAll = async () => {
+    setIsReconnectingAll(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect-all`, { method: 'POST' });
+      const j = await res.json();
+      await loadStatus();
+      showToast(j.data?.message || '✓ Đã Reconnect toàn bộ máy tính bảng!');
+    } catch {
+      showToast('Không thể Reconnect toàn bộ thiết bị');
+    } finally {
+      setIsReconnectingAll(false);
+    }
   };
 
   const loadStatus = useCallback(async () => {
@@ -813,6 +847,14 @@ export function AdminSessionsView(): React.ReactElement {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleReconnectAll}
+            disabled={isReconnectingAll}
+            className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5 text-emerald-600', isReconnectingAll && 'animate-spin')} />
+            <span>{isReconnectingAll ? 'Đang Reconnect...' : 'Reconnect tất cả'}</span>
+          </button>
           <button
             onClick={() => handleLock(true)}
             className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
@@ -907,6 +949,7 @@ export function AdminSessionsView(): React.ReactElement {
                 <th className="py-2.5 px-4 font-semibold">Pin</th>
                 <th className="py-2.5 px-4 font-semibold">Ứng dụng đang Ghim</th>
                 <th className="py-2.5 px-4 font-semibold">Trạng thái</th>
+                <th className="py-2.5 px-4 font-semibold text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -929,6 +972,17 @@ export function AdminSessionsView(): React.ReactElement {
                     <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
                       Đang điều khiển qua MAC Wi-Fi
                     </span>
+                  </td>
+                  <td className="py-2.5 px-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleReconnectDevice(d)}
+                      disabled={reconnectingId === d.id}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn('w-3 h-3', reconnectingId === d.id && 'animate-spin')} />
+                      <span>{reconnectingId === d.id ? 'Đang kết nối...' : 'Reconnect'}</span>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -1482,8 +1536,9 @@ export function AdminAuditLogsView(): React.ReactElement {
 // 7. CẤU HÌNH MDM (/mdm-config) — CHỈ SỬ DỤNG QUYỀN KIỂM SOÁT QUA MAC WI-FI
 // ============================================================================
 export function AdminMacWifiConfigView(): React.ReactElement {
-  const [targetMacOrIp, setTargetMacOrIp] = useState('00:08:22:64:6D:79');
+  const [targetMacOrIp, setTargetMacOrIp] = useState('00:08:22:FC:BC:7D');
   const [isProbing, setIsProbing] = useState(false);
+  const [isReconnectingAll, setIsReconnectingAll] = useState(false);
   const [probeData, setProbeData] = useState<{
     connected: boolean;
     ipAddress?: string;
@@ -1500,7 +1555,7 @@ export function AdminMacWifiConfigView(): React.ReactElement {
   const handleTestMacConnection = async () => {
     setIsProbing(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/devices/probe-connection`, {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: targetMacOrIp.trim() }),
@@ -1516,6 +1571,21 @@ export function AdminMacWifiConfigView(): React.ReactElement {
       });
     } finally {
       setIsProbing(false);
+    }
+  };
+
+  const handleReconnectAllFromConfig = async () => {
+    setIsReconnectingAll(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/reconnect-all`, {
+        method: 'POST',
+      });
+      const j = await res.json();
+      setToast(j.data?.message || '✓ Đã Reconnect & kiểm tra tín hiệu toàn bộ máy tính bảng!');
+    } catch {
+      setToast('Không thể Reconnect toàn bộ thiết bị.');
+    } finally {
+      setIsReconnectingAll(false);
     }
   };
 
@@ -1558,22 +1628,31 @@ export function AdminMacWifiConfigView(): React.ReactElement {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <input
               type="text"
               value={targetMacOrIp}
               onChange={(e) => setTargetMacOrIp(e.target.value)}
-              placeholder="00:08:22:64:6D:79 hoặc 192.168.1.28"
-              className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
+              placeholder="00:08:22:FC:BC:7D hoặc 192.168.20.19"
+              className="flex-1 min-w-[200px] px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs"
             />
             <button
               type="button"
               onClick={handleTestMacConnection}
               disabled={isProbing}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0"
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0"
             >
               <RefreshCw className={cn('w-3.5 h-3.5', isProbing && 'animate-spin')} />
-              <span>{isProbing ? 'Đang kiểm tra...' : 'Test MAC Wi-Fi'}</span>
+              <span>{isProbing ? 'Đang kết nối...' : 'Reconnect & Test'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleReconnectAllFromConfig}
+              disabled={isReconnectingAll}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', isReconnectingAll && 'animate-spin')} />
+              <span>{isReconnectingAll ? 'Đang quét...' : 'Reconnect Tất Cả'}</span>
             </button>
           </div>
 

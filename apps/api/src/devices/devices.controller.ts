@@ -238,6 +238,38 @@ export class DevicesController {
     };
   }
 
+  @Post('devices/reconnect')
+  @HttpCode(HttpStatus.OK)
+  async reconnectDevice(
+    @Body()
+    body: {
+      deviceId?: string;
+      target?: string;
+    },
+  ) {
+    const result = await this.devicesService.reconnectDevice(body);
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('devices/reconnect-all')
+  @HttpCode(HttpStatus.OK)
+  async reconnectAllDevices() {
+    const result = await this.devicesService.reconnectAllDevices();
+    return {
+      data: result,
+      meta: {
+        requestId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   @Get('devices/qr-pairing-info')
   getQrPairingInfo() {
     const data = this.devicesService.createQrPairingSession();

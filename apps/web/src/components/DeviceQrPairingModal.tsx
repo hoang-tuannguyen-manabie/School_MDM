@@ -502,7 +502,7 @@ export function DeviceQrPairingModal({
                   type="text"
                   value={manualTarget}
                   onChange={(e) => setManualTarget(e.target.value)}
-                  placeholder="Ví dụ: 00:08:22:64:6D:79 hoặc 192.168.20.32"
+                  placeholder="Ví dụ: 00:08:22:FC:BC:7D hoặc 192.168.20.19"
                   className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 bg-white"
                 />
                 <button
@@ -511,8 +511,8 @@ export function DeviceQrPairingModal({
                   disabled={isProbingManual}
                   className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition flex items-center gap-1.5 shrink-0 shadow-xs disabled:opacity-50"
                 >
-                  <Wifi className="w-3.5 h-3.5" />
-                  {isProbingManual ? 'Đang ping...' : 'Kiểm tra tín hiệu'}
+                  <RefreshCw className={`w-3.5 h-3.5 ${isProbingManual ? 'animate-spin' : ''}`} />
+                  {isProbingManual ? 'Đang Reconnect...' : 'Reconnect & Test kết nối'}
                 </button>
               </div>
 

@@ -71,6 +71,39 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     return new Map(this.knownIpPorts);
   }
 
+  /**
+   * Immediately forces an mDNS scan and ADB reconnect attempt for a specific tablet IP (or all known IPs)
+   * when a tablet is turned back on or when the teacher clicks Reconnect / Test Connection.
+   */
+  async forceReconnectDevice(targetIp?: string): Promise<AdbDeviceState[]> {
+    this.lastKnownPortsReconnectAt = 0;
+
+    if (targetIp && /^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim())) {
+      const cleanIp = targetIp.trim();
+      const mdnsRes = await this.execAdb(['mdns', 'services'], 2000);
+      if (mdnsRes.ok && mdnsRes.stdout) {
+        for (const line of mdnsRes.stdout.split(/\r?\n/)) {
+          const match = line.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3}):([0-9]{2,5})/);
+          if (match && match[1] === cleanIp) {
+            this.saveKnownPort(match[1], match[2]);
+          }
+        }
+      }
+
+      const knownPort = this.knownIpPorts.get(cleanIp);
+      const targets = new Set<string>([`${cleanIp}:5555`]);
+      if (knownPort) targets.add(`${cleanIp}:${knownPort}`);
+
+      await Promise.all(
+        Array.from(targets).map((t) => this.execAdb(['connect', t], 1500)),
+      );
+    }
+
+    const list = await this.refreshDevices();
+    await this.syncDeviceTelemetry();
+    return list;
+  }
+
   constructor() {
     this.adbPath = this.resolveAdbBinaryPath();
     this.knownPortsCachePath = path.resolve(path.dirname(this.adbPath), 'adb-known-ports.json');
