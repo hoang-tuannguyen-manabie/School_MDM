@@ -64,7 +64,7 @@ export function DeviceQrPairingModal({
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Manual input state
-  const [manualTarget, setManualTarget] = useState('00:08:22:64:6D:79');
+  const [manualTarget, setManualTarget] = useState('');
   const [isProbingManual, setIsProbingManual] = useState(false);
   const [manualProbeResult, setManualProbeResult] = useState<{
     connected: boolean;
@@ -218,12 +218,26 @@ export function DeviceQrPairingModal({
         throw new Error(json.data?.message || 'Ghép nối không dây thất bại');
       }
       setAdbPairMessage({ type: 'success', text: json.data.message });
+      let resolvedMac: string | undefined;
+      try {
+        const probeRes = await fetch('/api/v1/devices/probe-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: adbPairIp.trim() }),
+        });
+        const probeJson = await probeRes.json();
+        if (probeJson?.data?.macAddress) {
+          resolvedMac = probeJson.data.macAddress;
+        }
+      } catch {
+        // Ignore probe error
+      }
       setClaimedData({
         sessionId: qrInfo?.sessionId || 'adb-pair',
         claimed: true,
         ipAddress: adbPairIp.trim(),
         model: 'Teclast P30 (P30_ROW)',
-        macAddress: '00:08:22:64:6D:79',
+        macAddress: resolvedMac,
       });
     } catch (err: unknown) {
       setAdbPairMessage({ type: 'error', text: err instanceof Error ? err.message : 'Lỗi ghép nối' });

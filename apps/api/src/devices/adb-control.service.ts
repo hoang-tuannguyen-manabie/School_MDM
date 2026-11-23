@@ -65,6 +65,11 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     ['192.168.1.28', '5555'],
   ]);
   private readonly knownPortsCachePath: string;
+  private lastKnownPortsReconnectAt = 0;
+
+  getKnownIpPorts(): Map<string, string> {
+    return new Map(this.knownIpPorts);
+  }
 
   constructor() {
     this.adbPath = this.resolveAdbBinaryPath();
@@ -219,9 +224,10 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
    */
   async refreshDevices(): Promise<AdbDeviceState[]> {
     // 1. Check mDNS for any Android 14 Wireless Debugging services on LAN
-    const mdnsRes = await this.execAdb(['mdns', 'services'], 3000);
+    const mdnsRes = await this.execAdb(['mdns', 'services'], 2000);
     if (mdnsRes.ok && mdnsRes.stdout) {
       const lines = mdnsRes.stdout.split(/\r?\n/);
+      const connectPromises: Promise<unknown>[] = [];
       for (const line of lines) {
         if (line.includes('_adb-tls-connect._tcp') || line.includes('_adb._tcp')) {
           const match = line.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3}):([0-9]{2,5})/);
@@ -229,16 +235,35 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
             const ip = match[1];
             const port = match[2];
             this.saveKnownPort(ip, port);
-            await this.execAdb(['connect', `${ip}:${port}`], 3000);
+            const alreadyActive = Array.from(this.connectedDevices.values()).some(
+              (d) => d.status === 'device' && (d.ipAddress === ip || d.serial === `${ip}:${port}`),
+            );
+            if (!alreadyActive) {
+              connectPromises.push(this.execAdb(['connect', `${ip}:${port}`], 1500));
+            }
           }
         }
       }
+      if (connectPromises.length > 0) {
+        await Promise.all(connectPromises);
+      }
     }
 
-    // Also try reconnecting to any saved IP:port if not currently connected (e.g., when tablet screen is asleep and mDNS is paused)
-    if (this.connectedDevices.size === 0) {
+    // Also try reconnecting to saved IP:port entries on the same subnet (throttled to every 15s)
+    const nowMs = Date.now();
+    if (nowMs - this.lastKnownPortsReconnectAt > 15000) {
+      this.lastKnownPortsReconnectAt = nowMs;
+      const reconnectPromises: Promise<unknown>[] = [];
       for (const [ip, port] of this.knownIpPorts.entries()) {
-        await this.execAdb(['connect', `${ip}:${port}`], 2500);
+        const alreadyActive = Array.from(this.connectedDevices.values()).some(
+          (d) => d.status === 'device' && (d.ipAddress === ip || d.serial.startsWith(`${ip}:`)),
+        );
+        if (!alreadyActive) {
+          reconnectPromises.push(this.execAdb(['connect', `${ip}:${port}`], 1200));
+        }
+      }
+      if (reconnectPromises.length > 0) {
+        await Promise.all(reconnectPromises);
       }
     }
 
@@ -297,9 +322,9 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
     let matchedDevice: AdbDeviceState | undefined;
     if (targetIp) {
-      matchedDevice =
-        activeDevices.find((d) => d.ipAddress === targetIp || d.serial.startsWith(targetIp)) ||
-        activeDevices[0];
+      matchedDevice = activeDevices.find(
+        (d) => d.ipAddress === targetIp || d.serial.startsWith(`${targetIp}:`) || d.serial === targetIp,
+      );
     } else {
       matchedDevice = activeDevices[0];
     }
@@ -661,12 +686,8 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     const activeDevices = Array.from(this.connectedDevices.values()).filter(
       (d) => d.status === 'device',
     );
-    const ipDevice = activeDevices.find((d) =>
-      /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/.test(d.serial),
-    );
-    const targetDevices = ipDevice ? [ipDevice] : activeDevices.slice(0, 1);
     await Promise.all(
-      targetDevices.map((dev) => this.applyPackagePoliciesOnDevice(dev.serial)),
+      activeDevices.map((dev) => this.applyPackagePoliciesOnDevice(dev.serial)),
     );
   }
 
@@ -778,10 +799,7 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     const activeDevices = Array.from(this.connectedDevices.values()).filter(
       (d) => d.status === 'device',
     );
-    const ipDevice = activeDevices.find((d) =>
-      /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/.test(d.serial),
-    );
-    const targetDevices = ipDevice ? [ipDevice] : activeDevices.slice(0, 1);
+    const targetDevices = activeDevices;
 
     const cleanTitle = (params.title || 'Hoạt động trên lớp').replace(/["`$]/g, '').trim();
     const secs = Math.max(0, Math.floor(params.remainingSeconds ?? 0));
@@ -1382,10 +1400,18 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async ensureChromeDevToolsForwarded(serial: string): Promise<boolean> {
+  private getCdpPortForSerial(serial: string): number {
+    let hash = 0;
+    for (let i = 0; i < serial.length; i++) {
+      hash = (hash * 31 + serial.charCodeAt(i)) & 0x7fffffff;
+    }
+    return 9222 + (hash % 400);
+  }
+
+  private async ensureChromeDevToolsForwarded(serial: string, cdpPort: number): Promise<boolean> {
     try {
       const res = await this.execAdb(
-        ['-s', serial, 'forward', 'tcp:9222', 'localabstract:chrome_devtools_remote'],
+        ['-s', serial, 'forward', `tcp:${cdpPort}`, 'localabstract:chrome_devtools_remote'],
         2000,
       );
       return res.ok;
@@ -1396,15 +1422,16 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
   private async enforceChromeRestrictionsOnDevice(serial: string): Promise<void> {
     try {
-      // 1. Query open Chrome tabs via DevTools Protocol
-      await this.ensureChromeDevToolsForwarded(serial);
+      // 1. Query open Chrome tabs via DevTools Protocol (unique host port per tablet)
+      const cdpPort = this.getCdpPortForSerial(serial);
+      await this.ensureChromeDevToolsForwarded(serial, cdpPort);
       interface CdpTab {
         id: string;
         title: string;
         url: string;
         type: string;
       }
-      const tabs = await this.fetchCdpJson<CdpTab[]>('http://127.0.0.1:9222/json/list', 1000);
+      const tabs = await this.fetchCdpJson<CdpTab[]>(`http://127.0.0.1:${cdpPort}/json/list`, 1000);
       if (!tabs || !Array.isArray(tabs)) return;
 
       const pageTabs = tabs.filter((t) => t.type === 'page');
@@ -1488,12 +1515,12 @@ export class AdbControlService implements OnModuleInit, OnModuleDestroy {
 
       // Close all unallowed tabs
       for (const tabId of tabsToClose) {
-        await this.callCdpEndpoint(`http://127.0.0.1:9222/json/close/${tabId}`);
+        await this.callCdpEndpoint(`http://127.0.0.1:${cdpPort}/json/close/${tabId}`);
       }
 
       // If we closed tabs or student opened switcher, bring the approved tab back to front
       if (activeApprovedTabId && tabsToClose.length > 0) {
-        await this.callCdpEndpoint(`http://127.0.0.1:9222/json/activate/${activeApprovedTabId}`);
+        await this.callCdpEndpoint(`http://127.0.0.1:${cdpPort}/json/activate/${activeApprovedTabId}`);
       } else if (currentTabNeedsRedirect && this.activeLessonUrl) {
         // Current sole tab navigated away to Google or unauthorized site -> redirect back to lesson
         await this.execAdb(
