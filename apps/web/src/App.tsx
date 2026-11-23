@@ -243,16 +243,16 @@ function OverviewView({
         )}
 
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[1050px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase">
-                <th className="py-2.5 px-4 font-semibold">Tên Máy Tính Bảng</th>
-                <th className="py-2.5 px-4 font-semibold">Địa chỉ MAC Wi-Fi &amp; IP</th>
-                <th className="py-2.5 px-4 font-semibold">Lớp học</th>
-                <th className="py-2.5 px-4 font-semibold">Trạng thái Kiểm soát</th>
-                <th className="py-2.5 px-4 font-semibold">Pin</th>
-                <th className="py-2.5 px-4 font-semibold">Phản hồi</th>
-                <th className="py-2.5 px-4 font-semibold text-right">Thao tác</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Tên Máy Tính Bảng</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Địa chỉ MAC Wi-Fi &amp; IP</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Lớp học</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Trạng thái Kiểm soát</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Pin</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Phản hồi</th>
+                <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -260,11 +260,11 @@ function OverviewView({
                 const isOnline = d.status === 'ONLINE';
                 return (
                   <tr key={d.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-bold text-slate-900">
+                    <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
                       <div>{d.name}</div>
                       <div className="text-[11px] font-normal text-slate-500">{d.model}</div>
                     </td>
-                    <td className="py-3 px-4 font-mono">
+                    <td className="py-3 px-4 font-mono whitespace-nowrap">
                       <div className="font-bold text-indigo-700">
                         MAC: {d.macAddress || d.androidId || '00:08:22:64:6D:79'}
                       </div>
@@ -272,34 +272,42 @@ function OverviewView({
                         IP: {d.ipAddress || '192.168.1.28'}
                       </div>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-slate-700">
-                      {d.classCode === 'KHO' ? 'Kho dùng chung' : `Lớp ${d.classCode}`}
+                    <td className="py-3 px-4 font-semibold text-slate-700 whitespace-nowrap">
+                      {d.classCode === 'KHO' ? (
+                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px] whitespace-nowrap">
+                          Kho dùng chung
+                        </span>
+                      ) : (
+                        <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px] whitespace-nowrap">
+                          Lớp {d.classCode}
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 whitespace-nowrap">
                       {isOnline ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[11px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[11px] whitespace-nowrap">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
                           Đang điều khiển qua MAC Wi-Fi
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-[11px]">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-[11px] whitespace-nowrap">
                           Chờ bật nguồn
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 font-bold text-emerald-700">
+                    <td className="py-3 px-4 font-bold text-emerald-700 whitespace-nowrap">
                       {d.batteryLevel !== null && d.batteryLevel !== undefined
                         ? `${d.batteryLevel}%`
                         : '—'}
                     </td>
-                    <td className="py-3 px-4 text-slate-500">{d.lastSeen}</td>
-                    <td className="py-3 px-4 text-right">
+                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap">{d.lastSeen}</td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => handleReconnectSingle(d)}
                         disabled={reconnectingId === d.id}
                         title="Reconnect & Kiểm tra kết nối máy này"
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold transition inline-flex items-center gap-1 disabled:opacity-50"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold transition inline-flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
                       >
                         <RefreshCw className={cn('w-3.5 h-3.5', reconnectingId === d.id && 'animate-spin')} />
                         <span>{reconnectingId === d.id ? 'Đang kết nối...' : 'Reconnect'}</span>
@@ -895,17 +903,17 @@ function DevicesAndSessionControlView({
       {/* Real Devices Table (Max 10 rows per page) */}
       <div className="space-y-3">
         <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-          <table className="w-full text-left border-collapse text-sm">
+          <table className="w-full min-w-[1150px] text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
-                <th className="py-3 px-4 font-semibold">Tên thiết bị</th>
-                <th className="py-3 px-4 font-semibold">Địa chỉ MAC Wi-Fi &amp; IP</th>
-                <th className="py-3 px-4 font-semibold">Lớp học</th>
-                <th className="py-3 px-4 font-semibold">Trạng thái Điều khiển</th>
-                <th className="py-3 px-4 font-semibold">Phần cứng</th>
-                <th className="py-3 px-4 font-semibold">Mức pin</th>
-                <th className="py-3 px-4 font-semibold">Lần cuối phản hồi</th>
-                <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Tên thiết bị</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Địa chỉ MAC Wi-Fi &amp; IP</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Lớp học</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Trạng thái Điều khiển</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Phần cứng</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Mức pin</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Lần cuối phản hồi</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -929,8 +937,8 @@ function DevicesAndSessionControlView({
 
                   return (
                     <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-bold text-slate-900">{d.name}</td>
-                      <td className="py-3 px-4 font-mono text-xs tabular-nums">
+                      <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">{d.name}</td>
+                      <td className="py-3 px-4 font-mono text-xs tabular-nums whitespace-nowrap">
                         <div className="font-bold text-indigo-700">
                           MAC: {d.macAddress || d.androidId || d.serialNumber || '00:08:22:64:6D:79'}
                         </div>
@@ -938,38 +946,38 @@ function DevicesAndSessionControlView({
                           IP: {d.ipAddress || '192.168.1.28'}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-medium text-xs text-slate-700">
+                      <td className="py-3 px-4 font-medium text-xs text-slate-700 whitespace-nowrap">
                         {d.classCode === 'KHO' ? (
-                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px]">
+                          <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[11px] whitespace-nowrap font-medium">
                             Kho dùng chung
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px]">
+                          <span className="inline-block px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px] whitespace-nowrap">
                             Lớp {d.classCode}
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {isOnline ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                             Đang điều khiển (MAC Wi-Fi)
                           </span>
                         ) : isPending ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+                            <Radio className="w-3 h-3 text-amber-500 animate-pulse shrink-0" />
                             Chờ bật nguồn
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
                             Ngoại tuyến
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-xs text-slate-700">
+                      <td className="py-3 px-4 text-xs text-slate-700 whitespace-nowrap">
                         {d.model}
                       </td>
-                      <td className="py-3 px-4 text-xs tabular-nums text-slate-700">
+                      <td className="py-3 px-4 text-xs tabular-nums text-slate-700 whitespace-nowrap">
                         {d.batteryLevel !== null && d.batteryLevel !== undefined ? (
                           <span className="flex items-center gap-1 font-semibold">
                             {d.batteryLevel < 30 ? (
@@ -983,9 +991,9 @@ function DevicesAndSessionControlView({
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-xs text-slate-500 tabular-nums">{d.lastSeen}</td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
+                      <td className="py-3 px-4 text-xs text-slate-500 tabular-nums whitespace-nowrap">{d.lastSeen}</td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => handleReconnectDevice(d)}

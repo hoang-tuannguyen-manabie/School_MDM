@@ -623,15 +623,15 @@ export function TeacherClassroomView({
           ) : (
             <div className="space-y-3">
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full min-w-[1100px] text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                      <th className="py-2.5 px-3.5 font-semibold">Tên Thiết bị &amp; Lớp</th>
-                      <th className="py-2.5 px-3.5 font-semibold">MAC Wi-Fi &amp; Địa chỉ IP</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Trạng thái Kiểm soát</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Pin</th>
-                      <th className="py-2.5 px-3.5 font-semibold">Chế độ trên màn hình</th>
-                      <th className="py-2.5 px-3.5 font-semibold text-right">Thao tác nhanh</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Tên Thiết bị &amp; Lớp</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">MAC Wi-Fi &amp; Địa chỉ IP</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Trạng thái Kiểm soát</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Pin</th>
+                      <th className="py-2.5 px-3.5 font-semibold whitespace-nowrap">Chế độ trên màn hình</th>
+                      <th className="py-2.5 px-3.5 font-semibold text-right whitespace-nowrap">Thao tác nhanh</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -649,7 +649,7 @@ export function TeacherClassroomView({
                             isOnline ? 'bg-emerald-50/20 hover:bg-emerald-50/40' : 'hover:bg-slate-50',
                           )}
                         >
-                          <td className="py-3 px-3.5">
+                          <td className="py-3 px-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-2.5">
                               <div
                                 className={cn(
@@ -662,51 +662,51 @@ export function TeacherClassroomView({
                                 <Tablet className="w-4 h-4" />
                               </div>
                               <div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
                                   <span className="font-bold text-slate-900 text-xs">
                                     {device.name}
                                   </span>
-                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold whitespace-nowrap">
                                     Lớp {device.classCode}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                <p className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
                                   {device.model || 'Teclast P30 (P30_ROW)'}
                                 </p>
                               </div>
                             </div>
                           </td>
 
-                          <td className="py-3 px-3.5 font-mono">
-                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                          <td className="py-3 px-3.5 font-mono whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900 whitespace-nowrap">
                               <Wifi className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                               <span>MAC: {macDisplay}</span>
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
+                            <div className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
                               IP LAN: <strong className="text-slate-700">{ipDisplay}</strong>
                             </div>
                           </td>
 
-                          <td className="py-3 px-3.5">
+                          <td className="py-3 px-3.5 whitespace-nowrap">
                             {isOnline ? (
                               <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
                                   Đang điều khiển trực tiếp
                                 </span>
-                                <p className="text-[10px] text-slate-500 pl-1">{device.lastSeen}</p>
+                                <p className="text-[10px] text-slate-500 pl-1 whitespace-nowrap">{device.lastSeen}</p>
                               </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                <Radio className="w-3 h-3 text-amber-500 animate-pulse" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+                                <Radio className="w-3 h-3 text-amber-500 animate-pulse shrink-0" />
                                 Chờ tín hiệu Wi-Fi
                               </span>
                             )}
                           </td>
 
-                          <td className="py-3 px-3.5">
+                          <td className="py-3 px-3.5 whitespace-nowrap">
                             {device.batteryLevel !== null && device.batteryLevel !== undefined ? (
-                              <div className="flex items-center gap-1 font-bold tabular-nums text-slate-800">
+                              <div className="flex items-center gap-1 font-bold tabular-nums text-slate-800 whitespace-nowrap">
                                 {device.batteryLevel < 30 ? (
                                   <BatteryWarning className="w-4 h-4 text-amber-500" />
                                 ) : (
@@ -719,13 +719,13 @@ export function TeacherClassroomView({
                             )}
                           </td>
 
-                          <td className="py-3 px-3.5">
+                          <td className="py-3 px-3.5 whitespace-nowrap">
                             {isAllLocked ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-[11px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-[11px] whitespace-nowrap">
                                 <Lock className="w-3 h-3" /> Đang khóa màn hình
                               </span>
                             ) : activeKioskApp ? (
-                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold text-[11px]">
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold text-[11px] whitespace-nowrap">
                                 <AppDeviceIcon
                                   packageName={activeKioskApp.packageName}
                                   name={activeKioskApp.name}
@@ -734,19 +734,19 @@ export function TeacherClassroomView({
                                 <span>Ghim: {activeKioskApp.name}</span>
                               </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px] whitespace-nowrap">
                                 <Check className="w-3 h-3" /> Mở tự do ({apps.filter((a) => a.isApproved).length} app)
                               </span>
                             )}
                           </td>
 
-                          <td className="py-3 px-3.5 text-right">
-                            <div className="inline-flex items-center justify-end gap-1.5">
+                          <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
                               <button
                                 onClick={() => handleReconnectDevice(device)}
                                 disabled={reconnectingId === device.id}
                                 title="Reconnect khi mở lại máy hoặc kiểm tra tín hiệu kết nối"
-                                className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1 disabled:opacity-50"
+                                className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
                               >
                                 <RefreshCw className={cn('w-3 h-3', reconnectingId === device.id && 'animate-spin')} />
                                 <span>{reconnectingId === device.id ? 'Đang kết nối...' : 'Reconnect'}</span>
@@ -754,7 +754,7 @@ export function TeacherClassroomView({
                               <button
                                 onClick={handleLockAll}
                                 title="Khóa màn hình thiết bị này"
-                                className="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-semibold transition inline-flex items-center gap-1"
+                                className="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-semibold transition inline-flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Lock className="w-3 h-3" />
                                 <span>Khóa</span>
@@ -762,7 +762,7 @@ export function TeacherClassroomView({
                               <button
                                 onClick={handleUnlockAll}
                                 title="Mở sáng màn hình thiết bị này"
-                                className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1"
+                                className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold transition inline-flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Unlock className="w-3 h-3" />
                                 <span>Mở</span>
@@ -770,7 +770,7 @@ export function TeacherClassroomView({
                               <button
                                 onClick={() => handleOpenEditDevice(device)}
                                 title="Đổi tên thiết bị & sửa thông tin kết nối"
-                                className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold transition inline-flex items-center gap-1"
+                                className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold transition inline-flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Pencil className="w-3 h-3" />
                                 <span>Edit</span>

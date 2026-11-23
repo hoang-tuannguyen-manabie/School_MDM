@@ -389,14 +389,14 @@ export function ApplicationsManagementView(): React.ReactElement {
       {/* Applications List Table (Max 10 rows per page) */}
       <div className="space-y-3">
         <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-          <table className="w-full text-left border-collapse text-sm">
+          <table className="w-full min-w-[900px] text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50/90 text-slate-600 border-b border-slate-200 text-xs uppercase tracking-wider">
-                <th className="py-3 px-4 font-semibold">Tên Ứng dụng &amp; Mã gói</th>
-                <th className="py-3 px-4 font-semibold">Phân loại</th>
-                <th className="py-3 px-4 font-semibold">Phiên bản</th>
-                <th className="py-3 px-4 font-semibold text-center">Cho phép trong Tiết học</th>
-                <th className="py-3 px-4 font-semibold text-right">Chế độ Ghim (Kiosk)</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Tên Ứng dụng &amp; Mã gói</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Phân loại</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Phiên bản</th>
+                <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">Cho phép trong Tiết học</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Chế độ Ghim (Kiosk)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

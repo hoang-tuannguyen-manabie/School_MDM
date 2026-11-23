@@ -275,15 +275,15 @@ export function AdminClassesView(): React.ReactElement {
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[900px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase tracking-wider">
-              <th className="py-3 px-4 font-semibold">Mã Lớp</th>
-              <th className="py-3 px-4 font-semibold">Khối &amp; Môn học</th>
-              <th className="py-3 px-4 font-semibold">Giáo viên Phụ trách</th>
-              <th className="py-3 px-4 font-semibold">Phòng học</th>
-              <th className="py-3 px-4 font-semibold">Máy tính bảng (MAC Wi-Fi)</th>
-              <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Mã Lớp</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Khối &amp; Môn học</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Giáo viên Phụ trách</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Phòng học</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Máy tính bảng (MAC Wi-Fi)</th>
+              <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -592,14 +592,14 @@ export function AdminPoliciesView(): React.ReactElement {
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[900px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase tracking-wider">
-              <th className="py-3 px-4 font-semibold">Tên Chính sách Kiểm soát</th>
-              <th className="py-3 px-4 font-semibold">Phạm vi Áp dụng</th>
-              <th className="py-3 px-4 font-semibold">Cơ chế Thực thi qua MAC Wi-Fi</th>
-              <th className="py-3 px-4 font-semibold text-center">Trạng thái</th>
-              <th className="py-3 px-4 font-semibold text-right">Bật / Tắt</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Tên Chính sách Kiểm soát</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Phạm vi Áp dụng</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Cơ chế Thực thi qua MAC Wi-Fi</th>
+              <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">Trạng thái</th>
+              <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Bật / Tắt</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -940,45 +940,45 @@ export function AdminSessionsView(): React.ReactElement {
           Máy tính bảng đang chịu điều khiển trong Phiên học ({devices.length} máy)
         </h4>
         <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[1050px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase">
-                <th className="py-2.5 px-4 font-semibold">Tên Máy</th>
-                <th className="py-2.5 px-4 font-semibold">Lớp</th>
-                <th className="py-2.5 px-4 font-semibold">MAC Wi-Fi &amp; IP</th>
-                <th className="py-2.5 px-4 font-semibold">Pin</th>
-                <th className="py-2.5 px-4 font-semibold">Ứng dụng đang Ghim</th>
-                <th className="py-2.5 px-4 font-semibold">Trạng thái</th>
-                <th className="py-2.5 px-4 font-semibold text-right">Thao tác</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Tên Máy</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Lớp</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">MAC Wi-Fi &amp; IP</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Pin</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Ứng dụng đang Ghim</th>
+                <th className="py-2.5 px-4 font-semibold whitespace-nowrap">Trạng thái</th>
+                <th className="py-2.5 px-4 font-semibold text-right whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {devices.slice(0, PAGE_SIZE).map((d) => (
                 <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="py-2.5 px-4 font-bold text-slate-900">{d.name}</td>
-                  <td className="py-2.5 px-4 font-semibold text-indigo-700">Lớp {d.classCode}</td>
-                  <td className="py-2.5 px-4 font-mono">
+                  <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">{d.name}</td>
+                  <td className="py-2.5 px-4 font-semibold text-indigo-700 whitespace-nowrap">Lớp {d.classCode}</td>
+                  <td className="py-2.5 px-4 font-mono whitespace-nowrap">
                     MAC: {d.macAddress || d.androidId || '00:08:22:64:6D:79'} • IP: {d.ipAddress || '192.168.1.28'}
                   </td>
-                  <td className="py-2.5 px-4 font-bold text-emerald-700">{d.batteryLevel ?? 91}%</td>
-                  <td className="py-2.5 px-4">
+                  <td className="py-2.5 px-4 font-bold text-emerald-700 whitespace-nowrap">{d.batteryLevel ?? 91}%</td>
+                  <td className="py-2.5 px-4 whitespace-nowrap">
                     {activeKioskApp ? (
                       <span className="font-bold text-indigo-700">Đang ghim: {activeKioskApp.name}</span>
                     ) : (
                       <span className="text-emerald-700 font-medium">Mở tự do</span>
                     )}
                   </td>
-                  <td className="py-2.5 px-4">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                  <td className="py-2.5 px-4 whitespace-nowrap">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] whitespace-nowrap">
                       Đang điều khiển qua MAC Wi-Fi
                     </span>
                   </td>
-                  <td className="py-2.5 px-4 text-right">
+                  <td className="py-2.5 px-4 text-right whitespace-nowrap">
                     <button
                       type="button"
                       onClick={() => handleReconnectDevice(d)}
                       disabled={reconnectingId === d.id}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
                     >
                       <RefreshCw className={cn('w-3 h-3', reconnectingId === d.id && 'animate-spin')} />
                       <span>{reconnectingId === d.id ? 'Đang kết nối...' : 'Reconnect'}</span>
@@ -1129,15 +1129,15 @@ export function AdminUsersView(): React.ReactElement {
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[850px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase tracking-wider">
-              <th className="py-3 px-4 font-semibold">Họ và Tên</th>
-              <th className="py-3 px-4 font-semibold">Email đăng nhập</th>
-              <th className="py-3 px-4 font-semibold">Vai trò</th>
-              <th className="py-3 px-4 font-semibold">Lớp phụ trách</th>
-              <th className="py-3 px-4 font-semibold">Trạng thái</th>
-              <th className="py-3 px-4 font-semibold text-right">Thao tác</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Họ và Tên</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Email đăng nhập</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Vai trò</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Lớp phụ trách</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Trạng thái</th>
+              <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -1337,13 +1337,13 @@ export function AdminReportsView(): React.ReactElement {
           Bảng Báo cáo Trạng thái Cấp phép Ứng dụng trên Tablet (Tối đa 10 dòng/trang)
         </h4>
         <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[850px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase">
-                <th className="py-3 px-4 font-semibold">Ứng dụng trên Tablet</th>
-                <th className="py-3 px-4 font-semibold">Mã gói (Package)</th>
-                <th className="py-3 px-4 font-semibold">Phiên bản</th>
-                <th className="py-3 px-4 font-semibold">Trạng thái Kiểm soát MAC Wi-Fi</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Ứng dụng trên Tablet</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Mã gói (Package)</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Phiên bản</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Trạng thái Kiểm soát MAC Wi-Fi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -1488,15 +1488,15 @@ export function AdminAuditLogsView(): React.ReactElement {
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[950px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase">
-              <th className="py-3 px-4 font-semibold">Thời gian</th>
-              <th className="py-3 px-4 font-semibold">Người thực hiện</th>
-              <th className="py-3 px-4 font-semibold">Lệnh Điều khiển</th>
-              <th className="py-3 px-4 font-semibold">Thiết bị đích (MAC / IP)</th>
-              <th className="py-3 px-4 font-semibold">Nội dung chi tiết</th>
-              <th className="py-3 px-4 font-semibold text-right">Kết quả</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Thời gian</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Người thực hiện</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Lệnh Điều khiển</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Thiết bị đích (MAC / IP)</th>
+              <th className="py-3 px-4 font-semibold whitespace-nowrap">Nội dung chi tiết</th>
+              <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Kết quả</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
